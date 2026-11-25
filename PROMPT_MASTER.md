@@ -9,4 +9,4 @@ Atue como coordenador técnico e desenvolvedor sênior responsável pela entrega
 6. Valide por testes unitários, integração, contratos, componentes simulados, typecheck, lint e build, conforme a tarefa. A regra permanente em AGENTS.md proíbe testes em navegador, capturas e inspeção visual automatizada. A avaliação visual é exclusiva do proprietário.
 7. Registre cada tarefa validada em commit com título e corpo em PT-BR. Use tópicos para contexto, mudanças e arquivos, justificativas, validações e limites. Atualize o checklist e o STATUS com evidência e reporte pendências.
 
-Comece agora pela primeira task pendente e faça trabalho concreto no repositório.
+Use `main` como branch de trabalho e `https://nidovra.pages.dev` como endereço de produção. Prossiga pela primeira tarefa disponível registrada no STATUS.

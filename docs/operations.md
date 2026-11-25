@@ -41,6 +41,8 @@ rtk bypass env -u CLOUDFLARE_API_TOKEN -u NEON_API_KEY WRANGLER_SEND_METRICS=fal
   --var 'ALLOWED_ORIGINS:https://web.example.test' --persist-to /tmp/nidovra-wrangler-state
 ```
 
-A sonda `GET /api/v1/health` deve responder HTTP 200. O endereço `https://web.example.test` é sintético e serve somente ao teste local. O Worker `nidovra-api` usa `https://nidovra.pages.dev` como origem permitida. `workers_dev` e URLs de preview estão desativados. A exposição pública exige uma rota dedicada e os testes de publicação do plano.
+A sonda `GET /api/v1/health` deve responder HTTP 200. O endereço `https://web.example.test` é sintético e serve somente ao teste local. O Worker `nidovra-api` usa `https://nidovra.pages.dev` como origem permitida. O endpoint do Worker em `workers.dev` atende à aplicação de produção. As URLs de preview do Worker ficam desativadas. Valide a sonda com a origem de produção e confirme que as rotas privadas retornam HTTP 503 enquanto a integração de identidade estiver indisponível.
+
+Publique o build estático no projeto Pages `nidovra`, usando `main` como branch de produção. Para esse build, configure `VITE_API_BASE_URL=https://nidovra-api.tzursolucoes.workers.dev`. A variável expõe somente a origem pública da API. Confirme HTTP 200 no HTML, no JavaScript e no fallback SPA antes de remover uma prévia anterior.
 
 A consulta PostgreSQL via HTTP foi validada no endpoint `/sql` do host exato do compute. O hostname padrão do driver, `api.c-2.sa-east-1.aws.neon.tech`, foi bloqueado pelo proxy nesta sessão. Use a configuração de endpoint validada para testes com esse proxy e mantenha a credencial do banco exclusivamente em memória ou no gerenciador de segredos do runtime.

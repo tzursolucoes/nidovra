@@ -1,5 +1,11 @@
 # Estado do projeto
 
+## Correções de sessão e apresentação do login
+
+- O relato do proprietário mostrou HTTP 503 após confirmação e pediu uma tela adaptada ao celular com arte em desktop. O simulador do Worker reproduziu a rejeição de `redirect: 'error'` em `fetch`. A consulta da sessão usa redirecionamento manual e rejeita 3xx, mantendo o cache desabilitado.
+- Após confirmar o código, o frontend consulta a sessão. Se precisar, tenta entrada uma vez com a senha que ainda estiver em memória. A confirmação permanece visível durante erros temporários, com retomada da consulta. Quando for preciso digitar a senha, o e-mail permanece preenchido.
+- A tela usa formulário de coluna única em telas estreitas e painel com fotografia editorial em telas largas. Arte WebP local gerada a partir de uma cena doméstica com caderno e café. Testes de comportamento executados pelo terminal. Avaliação visual e login com a conta do proprietário aguardam aceite.
+
 ## Continuidade de identidade e documentos
 
 - Task 1: integrados cadastro por e-mail, confirmação por código, login, saída e resolução de sessão pelo Neon. O Pages encaminha pela mesma origem do site. O Neon confirmou a exigência de OTP e a origem de produção autorizada.

@@ -17,6 +17,14 @@ describe('integração de sessão Neon', () => {
     expect(url.pathname.endsWith('/get-session')).toBe(true);
     expect(url.searchParams.get('disableCookieCache')).toBe('true');
     expect(new Headers(init.headers).get('Cookie')).toBe(sessionCookie);
+    expect(init.redirect).toBe('manual');
+  });
+
+  it('rejeita redirecionamentos na consulta de sessão', async () => {
+    const upstream = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'https://other.test' } }));
+    const auth = createNeonAuth(base, origin, upstream);
+    await expect(auth.resolveSession(new Request(origin, { headers: { Cookie: sessionCookie } })))
+      .rejects.toThrow('Consulta de sessão indisponível');
   });
 
   it('rejeita origens externas e omite o token do corpo de retorno', async () => {

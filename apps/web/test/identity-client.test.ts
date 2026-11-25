@@ -78,6 +78,59 @@ describe('cliente de identidade', () => {
     ]);
   });
 
+  it('aproveita a sessão aberta pelo provedor sem reenviar a senha', async () => {
+    const context = { user: { id: 'autor', email: 'autor@example.test' }, memberships: [] };
+    const client = createIdentityClient(async (input) => {
+      expect(input).toBe('/api/v1/session/context');
+      return Response.json(context);
+    });
+
+    await expect(client.sessionAfterVerification('autor@example.test', 'senha-sintetica')).resolves.toEqual(context);
+  });
+
+  it.each([401, 403])('tenta entrar uma vez quando o código foi confirmado e a sessão devolve %s', async (status) => {
+    const requests: string[] = [];
+    const context = { user: { id: 'autor', email: 'autor@example.test' }, memberships: [] };
+    const client = createIdentityClient(async (input, init) => {
+      requests.push(String(input));
+      if (requests.length === 1) return new Response(null, { status });
+      if (requests.length === 2) {
+        expect(JSON.parse(String(init?.body))).toEqual({ email: 'autor@example.test', password: 'senha-sintetica' });
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(context);
+    });
+
+    await expect(client.sessionAfterVerification('autor@example.test', 'senha-sintetica')).resolves.toEqual(context);
+    expect(requests).toEqual(['/api/v1/session/context', '/api/v1/auth/sign-in/email', '/api/v1/session/context']);
+  });
+
+  it('oferece entrada manual quando a sessão está ausente e a senha não está em memória', async () => {
+    const client = createIdentityClient(async (input) => {
+      expect(input).toBe('/api/v1/session/context');
+      return new Response(null, { status: 401 });
+    });
+
+    await expect(client.sessionAfterVerification('autor@example.test')).resolves.toBeNull();
+  });
+
+  it('propaga indisponibilidade após verificar sem tentar reenviar credenciais', async () => {
+    const client = createIdentityClient(async (input) => {
+      expect(input).toBe('/api/v1/session/context');
+      return new Response(null, { status: 503 });
+    });
+
+    await expect(client.sessionAfterVerification('autor@example.test', 'senha-sintetica')).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('não abre o contexto familiar de outro e-mail ao concluir a verificação', async () => {
+    const client = createIdentityClient(async () => Response.json({
+      user: { id: 'outro', email: 'outra-conta@example.test' }, memberships: [],
+    }));
+
+    await expect(client.sessionAfterVerification('autor@example.test', 'senha-sintetica')).rejects.toMatchObject({ status: 409 });
+  });
+
   it('preserva a chave de idempotência do comando de criação', async () => {
     const client = createIdentityClient(async (input, init) => {
       expect(input).toBe('/api/v1/households');

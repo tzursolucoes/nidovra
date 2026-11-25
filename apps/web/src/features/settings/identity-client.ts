@@ -43,10 +43,14 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
     return { method: 'POST', headers, body: JSON.stringify(body) };
   }
 
+  async function signIn(email: string, password: string) {
+    await request('/auth/sign-in/email', post({ email, password }));
+  }
+
+  const session = () => json<SessionContext>('/session/context');
+
   return {
-    async signIn(email: string, password: string) {
-      await request('/auth/sign-in/email', post({ email, password }));
-    },
+    signIn,
     async signUp(name: string, email: string, password: string) {
       await request('/auth/sign-up/email', post({ name, email, password }));
     },
@@ -59,7 +63,31 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
     async signOut() {
       await request('/auth/sign-out', post({}));
     },
-    session: () => json<SessionContext>('/session/context'),
+    session,
+    async sessionAfterVerification(email: string, password?: string) {
+      async function verifiedContext() {
+        try {
+          const context = await session();
+          // Outra aba pode ter iniciado sessão para uma conta diferente durante a confirmação.
+          if (context.user.email.trim().toLowerCase() !== email.trim().toLowerCase()) throw new IdentityError(409);
+          return context;
+        } catch (failure) {
+          if (failure instanceof IdentityError && [401, 403].includes(failure.status)) return null;
+          throw failure;
+        }
+      }
+
+      const context = await verifiedContext();
+      // O provedor pode confirmar o e-mail sem emitir sessão. Tenta entrar uma única vez.
+      if (context || !password) return context;
+      try {
+        await signIn(email, password);
+      } catch (failure) {
+        if (failure instanceof IdentityError && [401, 403].includes(failure.status)) return null;
+        throw failure;
+      }
+      return verifiedContext();
+    },
     createHousehold: (name: string, key: string) =>
       json<{ id: string; name: string; role: 'admin' }>('/households', post({ name }, key)),
     members: (householdId: string) =>

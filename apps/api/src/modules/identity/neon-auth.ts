@@ -33,7 +33,8 @@ export function createNeonAuth(baseUrl: string, origin: string, fetcher: Fetcher
     const url = urlFor('get-session');
     url.searchParams.set('disableCookieCache', 'true');
     const response = await fetcher(url, {
-      method: 'GET', headers: requestHeaders, redirect: 'error', cache: 'no-store',
+      // O runtime do Worker aceita manual; o teste de status abaixo rejeita 3xx.
+      method: 'GET', headers: requestHeaders, redirect: 'manual', cache: 'no-store',
     });
     if (response.status === 401 || response.status === 403) return null;
     if (!response.ok) throw new Error('Consulta de sessão indisponível.');

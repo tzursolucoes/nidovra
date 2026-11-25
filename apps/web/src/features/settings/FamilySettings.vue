@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import {
   createIdentityClient, IdentityError, type HouseholdMember, type SessionContext,
 } from './identity-client';
 
 let client: ReturnType<typeof createIdentityClient> | undefined;
 let keysActor: string | undefined;
+let verificationLogin: { address: string; password: string } | undefined;
+let nextField: 'code' | 'password' | undefined;
 const session = ref<SessionContext>();
 const members = ref<HouseholdMember[]>([]);
 const householdId = ref('');
@@ -13,11 +15,15 @@ const name = ref('');
 const email = ref('');
 const invitation = ref('');
 const inviteToken = ref('');
-const authMode = ref<'login' | 'register' | 'verify'>('login');
+const authMode = ref<'login' | 'register' | 'verify' | 'connecting'>('connecting');
 const accountName = ref('');
 const accountEmail = ref('');
 const accountPassword = ref('');
+const verifiedAddress = ref<string>();
+const emailVerified = computed(() => verifiedAddress.value === accountEmail.value.trim().toLowerCase());
 const verificationCode = ref('');
+const passwordInput = ref<HTMLInputElement | null>(null);
+const codeInput = ref<HTMLInputElement | null>(null);
 const registering = computed(() => authMode.value === 'register');
 const error = ref('');
 const notice = ref('');
@@ -31,7 +37,7 @@ const errors: Record<number, string> = {
   409: 'A operação não está mais disponível. Atualize a página e tente novamente.',
   422: 'Confira os dados informados e tente novamente.',
   429: 'Aguarde um pouco antes de tentar novamente.',
-  503: 'O serviço de identidade está indisponível neste ambiente.',
+  503: 'Serviço temporariamente indisponível. Tente novamente em instantes.',
 };
 
 function idempotencyKey(operation: string) {
@@ -46,7 +52,14 @@ function api() {
   return client ??= createIdentityClient(fetch, import.meta.env.VITE_API_BASE_URL);
 }
 
-async function run(operation: () => Promise<void>) {
+function returnToLogin() {
+  session.value = undefined;
+  members.value = [];
+  inviteToken.value = '';
+  authMode.value = 'login';
+}
+
+async function run(operation: () => Promise<unknown>) {
   if (pending.value) return;
   pending.value = true;
   error.value = '';
@@ -55,14 +68,18 @@ async function run(operation: () => Promise<void>) {
     await operation();
   } catch (failure) {
     const status = failure instanceof IdentityError ? failure.status : undefined;
-    if (status === 401 || status === 503) {
-      session.value = undefined;
-      members.value = [];
-      inviteToken.value = '';
-    }
-    error.value = errors[status ?? 0] ?? 'Não foi possível concluir a operação. Tente novamente.';
+    if (status === 401) returnToLogin();
+    error.value = status === 503 && authMode.value === 'connecting' && !session.value
+      ? 'Não foi possível carregar sua sessão agora. Tente novamente em instantes.'
+      : errors[status ?? 0] ?? 'Não foi possível concluir a operação. Tente novamente.';
   } finally {
     pending.value = false;
+    if (nextField) {
+      const field = nextField === 'code' ? codeInput : passwordInput;
+      nextField = undefined;
+      await nextTick();
+      field.value?.focus();
+    }
   }
 }
 
@@ -73,7 +90,10 @@ async function loadMembers() {
 }
 
 async function loadSession(preferredId = householdId.value) {
-  const context = await api().session();
+  await applySession(await api().session(), preferredId);
+}
+
+async function applySession(context: SessionContext, preferredId = householdId.value) {
   // Uma falha temporária preserva as chaves e a troca confirmada de ator as descarta.
   if (keysActor !== context.user.id) {
     keys.clear();
@@ -83,6 +103,8 @@ async function loadSession(preferredId = householdId.value) {
     keysActor = context.user.id;
   }
   session.value = context;
+  accountPassword.value = '';
+  verificationLogin = undefined;
   householdId.value = context.memberships.find((item) => item.householdId === preferredId)?.householdId
     ?? context.memberships[0]?.householdId ?? '';
   await loadMembers();
@@ -92,8 +114,43 @@ function switchAuthMode() {
   authMode.value = authMode.value === 'login' ? 'register' : 'login';
   accountPassword.value = '';
   verificationCode.value = '';
+  verificationLogin = undefined;
+  verifiedAddress.value = undefined;
   error.value = '';
   notice.value = '';
+}
+
+function requestVerification(address: string, password: string) {
+  accountEmail.value = address;
+  verificationLogin = { address, password };
+  authMode.value = 'verify';
+  nextField = 'code';
+}
+
+async function checkSession() {
+  try {
+    await loadSession();
+    return null;
+  } catch (failure) {
+    if (!(failure instanceof IdentityError && [401, 403].includes(failure.status))) throw failure;
+    returnToLogin();
+    if (emailVerified.value) nextField = 'password';
+    return failure.status;
+  }
+}
+
+async function connectVerifiedSession(address: string, password?: string) {
+  const context = await api().sessionAfterVerification(address, password);
+  if (context) {
+    await applySession(context);
+  } else {
+    returnToLogin();
+    nextField = 'password';
+  }
+}
+
+function retrySession() {
+  return run(emailVerified.value ? () => connectVerifiedSession(accountEmail.value.trim()) : checkSession);
 }
 
 function submitAuth() {
@@ -104,7 +161,7 @@ function submitAuth() {
     if (registering.value) {
       await api().signUp(accountName.value.trim(), address, password);
       accountName.value = '';
-      authMode.value = 'verify';
+      requestVerification(address, password);
       return;
     }
     try {
@@ -115,13 +172,23 @@ function submitAuth() {
         return;
       }
       if (failure instanceof IdentityError && failure.status === 403) {
-        authMode.value = 'verify';
+        requestVerification(address, password);
         return;
       }
       throw failure;
     }
-    accountEmail.value = '';
-    await loadSession();
+    authMode.value = 'connecting';
+    if (emailVerified.value) {
+      await connectVerifiedSession(address);
+      return;
+    }
+    const status = await checkSession();
+    if (status === 403) {
+      requestVerification(address, password);
+    } else if (status === 401) {
+      error.value = 'A sessão não iniciou. Tente entrar novamente.';
+      nextField = 'password';
+    }
   });
 }
 
@@ -135,8 +202,9 @@ function resendVerification() {
 
 function verifyEmail() {
   return run(async () => {
+    const address = accountEmail.value.trim();
     try {
-      await api().verifyEmail(accountEmail.value.trim(), verificationCode.value.trim());
+      await api().verifyEmail(address, verificationCode.value.trim());
     } catch (failure) {
       if (failure instanceof IdentityError && [400, 401, 422].includes(failure.status)) {
         error.value = 'Código inválido ou expirado. Confira o código ou peça um novo.';
@@ -145,21 +213,25 @@ function verifyEmail() {
       throw failure;
     }
     verificationCode.value = '';
-    authMode.value = 'login';
-    notice.value = 'E-mail verificado. Entre com sua senha.';
+    verifiedAddress.value = address.toLowerCase();
+    authMode.value = 'connecting';
+    const password = verificationLogin?.address === address ? verificationLogin.password : undefined;
+    verificationLogin = undefined;
+    await connectVerifiedSession(address, password);
   });
 }
 
 function signOut() {
   return run(async () => {
     await api().signOut();
-    session.value = undefined;
-    members.value = [];
+    returnToLogin();
+    verifiedAddress.value = undefined;
+    accountPassword.value = '';
+    verificationLogin = undefined;
     householdId.value = '';
     name.value = '';
     email.value = '';
     invitation.value = '';
-    inviteToken.value = '';
     keys.clear();
     keysActor = undefined;
     notice.value = 'Sessão encerrada.';
@@ -207,61 +279,80 @@ function revokeMembership(member: HouseholdMember) {
   });
 }
 
-onMounted(() => run(async () => {
-  try {
-    await loadSession();
-  } catch (failure) {
-    if (!(failure instanceof IdentityError && failure.status === 401)) throw failure;
-  }
-}));
+onMounted(() => run(checkSession));
 </script>
 
 <template>
-  <main>
-    <h1>Nidovra</h1>
-    <p v-if="pending" role="status">Aguarde…</p>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="notice" role="status">{{ notice }}</p>
-    <form v-if="!session && authMode === 'verify'" class="access-form" aria-labelledby="verify-heading"
-      @submit.prevent="verifyEmail">
-      <h2 id="verify-heading">Confirme seu e-mail</h2>
-      <p>Informe o código de verificação de <strong>{{ accountEmail }}</strong>.</p>
-      <label for="verification-code">
-        Código de verificação
-        <input id="verification-code" v-model="verificationCode" inputmode="numeric" autocomplete="one-time-code"
-          maxlength="32" required :disabled="pending">
-      </label>
-      <div class="access-actions">
-        <button type="submit" :disabled="pending">Confirmar código</button>
-        <button class="secondary" type="button" :disabled="pending" @click="resendVerification">Reenviar código</button>
-        <button class="secondary" type="button" :disabled="pending" @click="switchAuthMode">Voltar ao login</button>
-      </div>
-    </form>
-    <form v-else-if="!session" class="access-form" aria-labelledby="access-heading" @submit.prevent="submitAuth">
-      <h2 id="access-heading">{{ registering ? 'Criar conta' : 'Entrar' }}</h2>
-      <label v-if="registering" for="account-name">
-        Nome
-        <input id="account-name" v-model="accountName" autocomplete="name" maxlength="120" required :disabled="pending">
-      </label>
-      <label for="account-email">
-        E-mail
-        <input id="account-email" v-model="accountEmail" type="email" autocomplete="username" maxlength="254" required :disabled="pending">
-      </label>
-      <label for="account-password">
-        Senha
-        <input id="account-password" v-model="accountPassword" type="password"
-          :autocomplete="registering ? 'new-password' : 'current-password'"
-          :minlength="registering ? 8 : undefined" maxlength="128" required :disabled="pending">
-      </label>
-      <div class="access-actions">
-        <button type="submit" :disabled="pending">{{ registering ? 'Criar conta' : 'Entrar' }}</button>
-        <button class="secondary" type="button" :disabled="pending" @click="switchAuthMode">
-          {{ registering ? 'Já tenho conta' : 'Criar uma conta' }}
-        </button>
-      </div>
-    </form>
+  <main class="identity-page" :class="{ 'access-page': !session }">
+    <div v-if="!session" class="access-layout">
+      <div class="access-content">
+        <header class="brand">
+          <span class="brand-mark" aria-hidden="true">N</span>
+          <p>Nidovra</p>
+        </header>
 
-    <template v-if="session">
+        <p v-if="emailVerified" class="message success" role="status">
+          E-mail confirmado.<template v-if="authMode === 'login'"> Entre com a sua senha.</template>
+        </p>
+        <p v-if="error" class="message failure" role="alert">{{ error }}</p>
+        <p v-if="notice" class="message success" role="status">{{ notice }}</p>
+
+        <section v-if="authMode === 'connecting'" class="access-form" aria-labelledby="session-heading">
+          <h1 id="session-heading">Acesse sua conta</h1>
+          <p v-if="pending" role="status">Carregando sua sessão…</p>
+          <button v-else type="button" @click="retrySession">Tentar carregar sessão</button>
+        </section>
+
+        <form v-else-if="authMode === 'verify'" class="access-form" aria-labelledby="verify-heading"
+          @submit.prevent="verifyEmail">
+          <h1 id="verify-heading">Confirme seu e-mail</h1>
+          <p>Informe o código de verificação enviado para <strong>{{ accountEmail }}</strong>.</p>
+          <label for="verification-code">
+            Código de verificação
+            <input id="verification-code" ref="codeInput" v-model="verificationCode" inputmode="numeric"
+              autocomplete="one-time-code" maxlength="32" required :disabled="pending">
+          </label>
+          <button type="submit" :disabled="pending">{{ pending ? 'Aguarde…' : 'Confirmar código' }}</button>
+          <div class="access-actions">
+            <button class="secondary" type="button" :disabled="pending" @click="resendVerification">Reenviar código</button>
+            <button class="secondary" type="button" :disabled="pending" @click="switchAuthMode">Voltar ao login</button>
+          </div>
+        </form>
+
+        <form v-else class="access-form" aria-labelledby="access-heading" @submit.prevent="submitAuth">
+          <h1 id="access-heading">{{ registering ? 'Criar conta' : 'Entrar' }}</h1>
+          <p>{{ registering ? 'Use um e-mail que você possa confirmar.' : 'Organize as finanças da sua casa.' }}</p>
+          <label v-if="registering" for="account-name">
+            Nome
+            <input id="account-name" v-model="accountName" autocomplete="name" maxlength="120" required :disabled="pending">
+          </label>
+          <label for="account-email">
+            E-mail
+            <input id="account-email" v-model="accountEmail" type="email" autocomplete="username"
+              maxlength="254" required :disabled="pending">
+          </label>
+          <label for="account-password">
+            Senha
+            <input id="account-password" ref="passwordInput" v-model="accountPassword" type="password"
+              :autocomplete="registering ? 'new-password' : 'current-password'"
+              :minlength="registering ? 8 : undefined" maxlength="128" required :disabled="pending">
+          </label>
+          <button type="submit" :disabled="pending">
+            {{ pending ? 'Aguarde…' : registering ? 'Criar conta' : 'Entrar' }}
+          </button>
+          <button class="secondary switch-mode" type="button" :disabled="pending" @click="switchAuthMode">
+            {{ registering ? 'Já tenho conta' : 'Criar uma conta' }}
+          </button>
+        </form>
+      </div>
+      <aside class="access-art" aria-hidden="true"></aside>
+    </div>
+
+    <template v-else>
+      <h1>Nidovra</h1>
+      <p v-if="pending" role="status">Aguarde…</p>
+      <p v-if="error" class="message failure" role="alert">{{ error }}</p>
+      <p v-if="notice" class="message success" role="status">{{ notice }}</p>
       <div class="access-actions">
         <p>{{ session.user.email }}</p>
         <button class="secondary" type="button" :disabled="pending" @click="signOut">Sair</button>
@@ -313,18 +404,145 @@ onMounted(() => run(async () => {
 </template>
 
 <style scoped>
-main { max-width: 42rem; margin: auto; padding: 1.5rem; color: #172b26; font-family: system-ui, sans-serif; }
+:global(body) { margin: 0; }
+
+.identity-page {
+  --canvas: #f6f7f3;
+  --surface: #fff;
+  --ink: #172b26;
+  --muted: #52665c;
+  --accent: #183e35;
+  --line: #dfe6e0;
+  box-sizing: border-box;
+  max-inline-size: 42rem;
+  margin-inline: auto;
+  padding: clamp(1rem, 5vw, 2rem);
+  color: var(--ink);
+  font-family: Inter, system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+.access-page {
+  display: grid;
+  align-items: center;
+  max-inline-size: none;
+  min-block-size: 100svh;
+  padding: clamp(1rem, 4vw, 3rem);
+  background: var(--canvas);
+}
+
+.access-layout {
+  display: grid;
+  width: min(100%, 31rem);
+  margin-inline: auto;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  box-shadow: 0 18px 64px #172b260d;
+}
+
+.access-content {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  align-self: center;
+  padding: clamp(1rem, 5vw, 3.5rem);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-block-end: clamp(1.5rem, 4vw, 3rem);
+}
+
+.brand p {
+  margin: 0;
+  color: var(--accent);
+  font-family: Georgia, serif;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -.025em;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: .75rem;
+  color: #fff;
+  background: var(--accent);
+  font: 700 1.125rem Georgia, serif;
+}
+
+.access-art { display: none; }
+
+h1, h2 {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+  font-weight: 750;
+  line-height: 1.13;
+  letter-spacing: -.045em;
+}
+
+.access-form h1 { font-size: clamp(1.75rem, 4vw, 2.75rem); }
+.access-form > p { margin: 0; color: var(--muted); }
 section, form { display: grid; gap: .75rem; margin-block: 1rem; }
-input, select, button { min-height: 44px; padding: .5rem .75rem; font: inherit; }
-input, select { box-sizing: border-box; width: 100%; border: 1px solid #52665c; border-radius: .75rem; }
-button { width: fit-content; border: 1px solid #183e35; border-radius: .75rem; color: white; background: #183e35; }
-button:disabled { opacity: .55; }
-.access-form { max-width: 26rem; }
-.access-form > label { display: grid; gap: .25rem; }
-.access-form > p { overflow-wrap: anywhere; }
+.access-form { margin: 0; gap: 1rem; }
+.access-form > label { display: grid; gap: .375rem; font-weight: 600; }
+.access-content, .access-actions > p, li { overflow-wrap: anywhere; }
+
+input, select, button {
+  box-sizing: border-box;
+  min-block-size: 44px;
+  padding: .625rem .875rem;
+  border-radius: .75rem;
+  font: inherit;
+}
+
+input, select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  border: 1px solid #829389;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+button {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  border: 1px solid var(--accent);
+  color: #fff;
+  background: var(--accent);
+  font-weight: 650;
+  white-space: normal;
+  cursor: pointer;
+}
+
+button:disabled { opacity: .65; cursor: default; }
+:is(input, select, button):focus-visible { outline: 3px solid #27866a; outline-offset: 3px; }
+.access-form > button { inline-size: 100%; }
 .access-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
-.access-actions > p { overflow-wrap: anywhere; }
-.secondary { color: #183e35; background: transparent; }
-li + li { margin-top: .5rem; }
-[role="alert"] { color: #8a3929; }
+.access-actions > p { margin-block: .5rem; }
+.secondary { color: var(--accent); background: transparent; }
+.switch-mode { border-color: var(--line); }
+.message { margin: 0 0 1rem; padding: .75rem; border: 1px solid; border-radius: .75rem; }
+.failure { color: #8a3929; border-color: #e8c4bb; background: #fff5f2; }
+.success { color: #235a47; border-color: #c5ded2; background: #eef7f1; }
+li + li { margin-block-start: .5rem; }
+
+@media (min-width: 58rem) {
+  .access-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    width: min(100%, 72rem);
+    min-block-size: clamp(34rem, 75svh, 48rem);
+  }
+  .access-content { padding-inline: clamp(2rem, 5vw, 5rem); }
+  .access-art {
+    display: block;
+    margin: .5rem;
+    border-radius: 1rem;
+    background: #56604a url('/images/nidovra-login.webp') center 55% / cover no-repeat;
+  }
+}
 </style>

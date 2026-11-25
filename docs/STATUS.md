@@ -2,9 +2,11 @@
 
 ## Correções de sessão e apresentação do login
 
-- O relato do proprietário mostrou HTTP 503 após confirmação e pediu uma tela adaptada ao celular com arte em desktop. O simulador do Worker reproduziu a rejeição de `redirect: 'error'` em `fetch`. A consulta da sessão usa redirecionamento manual e rejeita 3xx, mantendo o cache desabilitado.
+- O proprietário relatou indisponibilidade após confirmação. A falha foi reproduzida como HTTP 503 com cookie sintético. O simulador do Worker reproduziu a rejeição de `redirect: 'error'` em `fetch`. A consulta da sessão usa redirecionamento manual e rejeita 3xx, mantendo o cache desabilitado.
 - Após confirmar o código, o frontend consulta a sessão. Se precisar, tenta entrada uma vez com a senha que ainda estiver em memória. A confirmação permanece visível durante erros temporários, com retomada da consulta. Quando for preciso digitar a senha, o e-mail permanece preenchido.
 - A tela usa formulário de coluna única em telas estreitas e painel com fotografia editorial em telas largas. Arte WebP local gerada a partir de uma cena doméstica com caderno e café. Testes de comportamento executados pelo terminal. Avaliação visual e login com a conta do proprietário aguardam aceite.
+- Produção atualizada pelo commit `c266f69` da `main`. Pages `1ccb609f-761f-4a42-a747-ba71a66990fe` e Worker `5293a103-64d0-4829-88c3-42fc9650b69b`. HTML, JavaScript e WebP retornaram HTTP 200. Os hashes do JavaScript e do WebP corresponderam ao build. O mesmo cookie sintético passou a receber HTTP 401 no Worker e em `nidovra.pages.dev`.
+- Desktop: 36 testes aprovados, typecheck e build. Três testes que exigem PostgreSQL isolado ficaram fora da suíte padrão nesta correção.
 
 ## Continuidade de identidade e documentos
 

@@ -1,0 +1,4 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 2
+# Modelo e esforço herdados da sessão: não fixar modelos incompatíveis com CLI/IDE.

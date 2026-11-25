@@ -1,0 +1,36 @@
+# Manifesto do pacote
+
+- `.agents/skills/nidovra-database-docs/SKILL.md`
+- `.agents/skills/nidovra-execution/SKILL.md`
+- `.agents/skills/nidovra-financial-integrity/SKILL.md`
+- `.agents/skills/nidovra-imports/SKILL.md`
+- `.agents/skills/nidovra-infra/SKILL.md`
+- `.agents/skills/nidovra-review/SKILL.md`
+- `.agents/skills/nidovra-ui/SKILL.md`
+- `.codex/agents/architect_data.toml`
+- `.codex/agents/backend_specialist.toml`
+- `.codex/agents/financial_imports.toml`
+- `.codex/agents/frontend_ux.toml`
+- `.codex/agents/independent_reviewer.toml`
+- `.codex/agents/infra_specialist.toml`
+- `.codex/agents/qa_security.toml`
+- `.codex/agents/senior_developer.toml`
+- `.codex/config.toml`
+- `.env.example`
+- `.gitignore`
+- `AGENTS.md`
+- `PROMPT_MASTER.md`
+- `README.md`
+- `docs/STATUS.md`
+- `docs/adr/README.md`
+- `docs/architecture.md`
+- `docs/business-rules.md`
+- `docs/data-dictionary.md`
+- `docs/dependencies.md`
+- `docs/erd.md`
+- `docs/import-formats.md`
+- `docs/operations.md`
+- `docs/security.md`
+- `docs/superpowers/plans/2026-11-25-nidovra-v12-implementation.md`
+- `docs/superpowers/specs/2026-11-25-nidovra-v12-design.md`
+- `MANIFESTO.md`

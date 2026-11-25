@@ -1,5 +1,11 @@
 # Estado do projeto
 
+## Painel autenticado da família
+
+- O relato do proprietário mostrou acesso autenticado e confirmação de criação da família. A reformulação anterior havia tratado a tela de acesso. A área autenticada agora destaca a família ativa, o papel, os integrantes e as ações disponíveis, com fotografia em telas largas e coluna única em telas estreitas.
+- Uma conta sem família pode criar um espaço ou usar um código recebido. Uma família existente pode ser usada por uma só pessoa. O administrador pode gerar um código vinculado ao e-mail convidado e compartilhar manualmente. As ações secundárias ficam recolhidas. A API fornece papel e identificadores na lista de integrantes. A identificação por nome ou e-mail permanece pendente.
+- A consulta direta ao GitHub confirmou `d1cd2a8` na `main` antes do ajuste. A tela anterior falhou no teste de destaque da família ativa. No novo build, administrador, membro e conta sem família passaram em DOM simulado. Também passaram typecheck e 36 testes da suíte padrão. Três testes exigem PostgreSQL isolado e ficaram fora desta rodada. Avaliação visual pelo proprietário.
+
 ## Correções de sessão e apresentação do login
 
 - O proprietário relatou indisponibilidade após confirmação. A falha foi reproduzida como HTTP 503 com cookie sintético. O simulador do Worker reproduziu a rejeição de `redirect: 'error'` em `fetch`. A consulta da sessão usa redirecionamento manual e rejeita 3xx, mantendo o cache desabilitado.

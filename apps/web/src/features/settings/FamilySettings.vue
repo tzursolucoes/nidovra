@@ -10,11 +10,16 @@ let verificationLogin: { address: string; password: string } | undefined;
 let nextField: 'code' | 'password' | undefined;
 const session = ref<SessionContext>();
 const members = ref<HouseholdMember[]>([]);
+const membersLoaded = ref(false);
 const householdId = ref('');
 const name = ref('');
 const email = ref('');
 const invitation = ref('');
 const inviteToken = ref('');
+const inviteRecipient = ref('');
+const inviteTokenInput = ref<HTMLInputElement | null>(null);
+const copyStatus = ref('');
+const familyHeading = ref<HTMLHeadingElement | null>(null);
 const authMode = ref<'login' | 'register' | 'verify' | 'connecting'>('connecting');
 const accountName = ref('');
 const accountEmail = ref('');
@@ -55,7 +60,9 @@ function api() {
 function returnToLogin() {
   session.value = undefined;
   members.value = [];
+  membersLoaded.value = false;
   inviteToken.value = '';
+  inviteRecipient.value = '';
   authMode.value = 'login';
 }
 
@@ -85,8 +92,12 @@ async function run(operation: () => Promise<unknown>) {
 
 async function loadMembers() {
   members.value = [];
+  membersLoaded.value = false;
   inviteToken.value = '';
-  if (householdId.value) members.value = (await api().members(householdId.value)).members;
+  inviteRecipient.value = '';
+  if (!householdId.value) return;
+  members.value = (await api().members(householdId.value)).members;
+  membersLoaded.value = true;
 }
 
 async function loadSession(preferredId = householdId.value) {
@@ -246,19 +257,41 @@ function createHousehold() {
     name.value = '';
     notice.value = 'Família criada.';
     await loadSession(result.id);
+    await nextTick();
+    familyHeading.value?.focus();
   });
 }
 
 function createInvitation() {
   return run(async () => {
     inviteToken.value = '';
+    inviteRecipient.value = '';
+    copyStatus.value = '';
     const address = email.value.trim();
     const operation = `convidar:${householdId.value}:${address}`;
     const result = await api().invite(householdId.value, address, idempotencyKey(operation));
     keys.delete(operation);
     email.value = '';
+    inviteRecipient.value = address;
     inviteToken.value = result.token;
+    await nextTick();
+    inviteTokenInput.value?.focus();
   });
+}
+
+async function copyInvitation() {
+  const token = inviteToken.value;
+  if (!token) return;
+  copyStatus.value = '';
+  try {
+    await navigator.clipboard.writeText(token);
+    if (inviteToken.value === token) copyStatus.value = 'Código copiado.';
+  } catch {
+    if (inviteToken.value !== token) return;
+    inviteTokenInput.value?.focus();
+    inviteTokenInput.value?.select();
+    copyStatus.value = 'Código selecionado para copiar manualmente.';
+  }
 }
 
 function acceptInvitation() {
@@ -267,11 +300,13 @@ function acceptInvitation() {
     invitation.value = '';
     notice.value = 'Convite aceito.';
     await loadSession(result.householdId);
+    await nextTick();
+    familyHeading.value?.focus();
   });
 }
 
-function revokeMembership(member: HouseholdMember) {
-  if (!window.confirm(`Remover o acesso da conta ${member.authUserId} a esta família?`)) return;
+function revokeMembership(member: HouseholdMember, position: number) {
+  if (!window.confirm(`Remover o acesso de Integrante ${position} a esta família?`)) return;
   void run(async () => {
     await api().revoke(householdId.value, member.id);
     notice.value = 'Acesso removido.';
@@ -283,7 +318,7 @@ onMounted(() => run(checkSession));
 </script>
 
 <template>
-  <main class="identity-page" :class="{ 'access-page': !session }">
+  <main class="identity-page" :class="session ? 'family-page' : 'access-page'">
     <div v-if="!session" class="access-layout">
       <div class="access-content">
         <header class="brand">
@@ -348,58 +383,145 @@ onMounted(() => run(checkSession));
       <aside class="access-art" aria-hidden="true"></aside>
     </div>
 
-    <template v-else>
-      <h1>Nidovra</h1>
-      <p v-if="pending" role="status">Aguarde…</p>
-      <p v-if="error" class="message failure" role="alert">{{ error }}</p>
-      <p v-if="notice" class="message success" role="status">{{ notice }}</p>
-      <div class="access-actions">
-        <p>{{ session.user.email }}</p>
-        <button class="secondary" type="button" :disabled="pending" @click="signOut">Sair</button>
-      </div>
-      <section v-if="session.memberships.length" aria-labelledby="household-heading">
-        <h2 id="household-heading">Minha família</h2>
-        <label for="household">Família</label>
-        <select id="household" v-model="householdId" :disabled="pending" @change="run(loadMembers)">
-          <option v-for="item in session.memberships" :key="item.householdId" :value="item.householdId">
-            {{ item.householdName }}
-          </option>
-        </select>
-        <ul v-if="members.length">
-          <li v-for="(member, index) in members" :key="member.id">
-            {{ member.authUserId === session.user.id ? 'Você' : `Integrante ${index + 1}` }}
-            · {{ member.role === 'admin' ? 'Administrador' : 'Membro' }}
-            <div v-if="selected?.role === 'admin' && member.authUserId !== session.user.id">
-              Conta <code>{{ member.authUserId }}</code>
-              <button type="button" :disabled="pending" @click="revokeMembership(member)">Remover acesso</button>
-            </div>
-          </li>
-        </ul>
-        <form v-if="selected?.role === 'admin'" @submit.prevent="createInvitation">
-          <label for="invite-email">E-mail do integrante</label>
-          <input id="invite-email" v-model="email" type="email" maxlength="254" required :disabled="pending">
-          <button type="submit" :disabled="pending">Criar convite</button>
-        </form>
-        <label v-if="inviteToken" for="invite-token">
-          Código de uso único. Compartilhe somente com a pessoa convidada.
-          <input id="invite-token" :value="inviteToken" readonly autocomplete="off">
-        </label>
+    <div v-else class="family-shell">
+      <header class="family-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">N</span>
+          <p>Nidovra</p>
+        </div>
+        <div class="family-account">
+          <span>{{ session.user.email }}</span>
+          <button class="secondary" type="button" :disabled="pending" @click="signOut">Sair</button>
+        </div>
+      </header>
+
+      <section class="family-hero" aria-labelledby="family-heading">
+        <div class="family-hero-copy">
+          <p v-if="selected" class="family-role">
+            {{ selected.role === 'admin' ? 'Administrador da família' : 'Membro da família' }}
+          </p>
+          <h1 id="family-heading" ref="familyHeading" tabindex="-1">
+            {{ selected?.householdName ?? 'Configure sua família' }}
+          </h1>
+          <p v-if="selected">Seu espaço para reunir as pessoas da casa e organizar as finanças em conjunto.</p>
+          <p v-else>Crie seu próprio espaço familiar ou use o código de um convite que você recebeu.</p>
+        </div>
+        <div class="family-hero-art" aria-hidden="true"></div>
       </section>
 
-      <form @submit.prevent="createHousehold">
-        <h2>Criar família</h2>
-        <label for="household-name">Nome da família</label>
-        <input id="household-name" v-model="name" maxlength="120" required :disabled="pending">
-        <button type="submit" :disabled="pending">Criar família</button>
-      </form>
+      <div v-if="pending || error || notice" class="family-feedback">
+        <p v-if="pending" role="status">Aguarde…</p>
+        <p v-if="error" class="message failure" role="alert">{{ error }}</p>
+        <p v-if="notice" class="message success" role="status">{{ notice }}</p>
+      </div>
 
-      <form @submit.prevent="acceptInvitation">
-        <h2>Aceitar convite</h2>
-        <label for="accept-token">Código do convite</label>
-        <input id="accept-token" v-model="invitation" autocomplete="off" spellcheck="false" required :disabled="pending">
-        <button type="submit" :disabled="pending">Aceitar convite</button>
-      </form>
-    </template>
+      <div class="family-grid">
+        <section v-if="selected" class="family-card people-card" aria-labelledby="people-heading">
+          <header class="people-heading">
+            <div>
+              <h2 id="people-heading">Pessoas da família</h2>
+              <p>Contas com acesso a este espaço.</p>
+            </div>
+            <span v-if="membersLoaded" class="member-count">
+              {{ members.length }} {{ members.length === 1 ? 'integrante' : 'integrantes' }}
+            </span>
+          </header>
+          <label v-if="session.memberships.length > 1" class="family-field" for="household">
+            Trocar de família
+            <select id="household" v-model="householdId" :disabled="pending" @change="run(loadMembers)">
+              <option v-for="item in session.memberships" :key="item.householdId" :value="item.householdId">
+                {{ item.householdName }}
+              </option>
+            </select>
+          </label>
+          <ul v-if="membersLoaded && members.length" class="member-list">
+            <li v-for="(member, index) in members" :key="member.id" class="member-row">
+              <span class="member-avatar" aria-hidden="true">{{ member.authUserId === session.user.id ? 'V' : 'I' }}</span>
+              <span class="member-label">
+                <strong>{{ member.authUserId === session.user.id ? 'Você' : `Integrante ${index + 1}` }}</strong>
+                <small>{{ member.role === 'admin' ? 'Administrador' : 'Membro' }}</small>
+              </span>
+              <button v-if="selected.role === 'admin' && member.authUserId !== session.user.id"
+                class="secondary remove-access" type="button" :disabled="pending"
+                :aria-label="`Remover acesso de Integrante ${index + 1}`" @click="revokeMembership(member, index + 1)">
+                Remover acesso
+              </button>
+            </li>
+          </ul>
+          <p v-else-if="membersLoaded">Nenhum integrante foi encontrado para esta família.</p>
+          <button v-else-if="!pending" class="secondary" type="button" @click="run(loadMembers)">Tentar carregar integrantes</button>
+          <p v-if="membersLoaded && members.length === 1 && selected.role === 'admin'" class="family-note">
+            Você já pode usar este espaço. Convidar alguém é opcional.
+          </p>
+        </section>
+
+        <section class="family-card next-card" aria-labelledby="next-heading">
+          <h2 id="next-heading">{{ selected ? 'Próximo passo' : 'Como começar' }}</h2>
+          <template v-if="selected?.role === 'admin'">
+            <p>Para compartilhar o acesso, gere um código vinculado ao e-mail da pessoa convidada.</p>
+            <form class="family-form" @submit.prevent="createInvitation">
+              <label class="family-field" for="invite-email">
+                E-mail da pessoa convidada
+                <input id="invite-email" v-model="email" type="email" maxlength="254" required :disabled="pending"
+                  placeholder="nome@exemplo.com" aria-describedby="invite-help">
+              </label>
+              <p id="invite-help">Envie o código você mesmo. A pessoa entra com esse e-mail e cola o código em “Aceitar convite”.</p>
+              <button type="submit" :disabled="pending">Gerar código de convite</button>
+            </form>
+            <div v-if="inviteToken" class="issued-invite">
+              <label class="family-field" for="invite-token">
+                Código de uso único
+                <input id="invite-token" ref="inviteTokenInput" :value="inviteToken" readonly autocomplete="off">
+              </label>
+              <p>Compartilhe somente com {{ inviteRecipient }}.</p>
+              <button type="button" class="secondary" :disabled="pending" @click="copyInvitation">Copiar código</button>
+              <p v-if="copyStatus" role="status">{{ copyStatus }}</p>
+            </div>
+          </template>
+          <p v-else-if="selected">Você já participa desta família. Se recebeu um convite para outro espaço, aceite abaixo.</p>
+          <p v-else>Escolha um nome para o espaço da casa. Se alguém já criou a família, use o código recebido.</p>
+
+          <form v-if="!selected" class="family-form" @submit.prevent="createHousehold">
+            <label class="family-field" for="household-name">
+              Nome da família
+              <input id="household-name" v-model="name" maxlength="120" required :disabled="pending" placeholder="Ex.: Casa Oliveira">
+            </label>
+            <button type="submit" :disabled="pending">Criar minha família</button>
+          </form>
+        </section>
+
+        <section class="family-card family-options" aria-labelledby="options-heading">
+          <h2 id="options-heading">{{ selected ? 'Outras ações' : 'Já recebeu um convite?' }}</h2>
+          <details>
+            <summary>Aceitar convite</summary>
+            <form class="family-form" @submit.prevent="acceptInvitation">
+              <p id="accept-help">Entre com o e-mail para o qual o convite foi criado e cole o código recebido.</p>
+              <label class="family-field" for="accept-token">
+                Código do convite
+                <input id="accept-token" v-model="invitation" autocomplete="off" spellcheck="false" required
+                  :disabled="pending" aria-describedby="accept-help">
+              </label>
+              <button type="submit" :disabled="pending">Confirmar convite</button>
+            </form>
+          </details>
+          <details v-if="selected">
+            <summary>Criar outra família</summary>
+            <form class="family-form" @submit.prevent="createHousehold">
+              <p>Crie um espaço separado se precisar acompanhar outra casa.</p>
+              <label class="family-field" for="another-household-name">
+                Nome da nova família
+                <input id="another-household-name" v-model="name" maxlength="120" required :disabled="pending">
+              </label>
+              <button type="submit" :disabled="pending">Criar nova família</button>
+            </form>
+          </details>
+        </section>
+      </div>
+
+      <footer class="family-footer">
+        <p>Famílias e convites já estão disponíveis. As ferramentas financeiras chegam em etapas.</p>
+      </footer>
+    </div>
   </main>
 </template>
 
@@ -531,6 +653,180 @@ button:disabled { opacity: .65; cursor: default; }
 .success { color: #235a47; border-color: #c5ded2; background: #eef7f1; }
 li + li { margin-block-start: .5rem; }
 
+.family-page {
+  --canvas: #f4f2eb;
+  --surface: #fffefa;
+  --line: #dadfd4;
+  max-inline-size: none;
+  min-block-size: 100svh;
+  padding: 0 clamp(1rem, 4vw, 3rem);
+  background: var(--canvas);
+}
+
+.family-shell { inline-size: min(100%, 74rem); margin-inline: auto; }
+
+.family-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem 1.5rem;
+  padding-block: 1rem;
+}
+
+.family-header .brand { margin: 0; }
+.family-header .brand-mark { flex: none; }
+
+.family-account {
+  display: flex;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  align-items: center;
+  gap: .5rem 1rem;
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.family-account > span { overflow-wrap: anywhere; }
+.family-account button { flex: none; border-color: #afbaab; }
+
+.family-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin: 0;
+  border-radius: 1.25rem;
+  color: #fbf8ec;
+  background: #203d35;
+}
+
+.family-hero-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  gap: .75rem;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  min-inline-size: 0;
+}
+
+.family-hero h1 {
+  font: 400 clamp(2.125rem, 5.4vw, 4rem)/1.02 Georgia, serif;
+  overflow-wrap: anywhere;
+}
+
+.family-hero h1:focus-visible { outline: 2px solid #f2cf88; outline-offset: .375rem; }
+.family-hero p { margin: 0; max-inline-size: 37ch; color: #e9ecdf; }
+.family-hero .family-role { color: #f2cf88; font-size: .875rem; font-weight: 700; }
+.family-hero-art { display: none; }
+
+.family-feedback { margin-block: 1rem; }
+.family-feedback > p { margin: .5rem 0; }
+
+.family-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+  margin-block-start: 1rem;
+}
+
+.family-card {
+  min-inline-size: 0;
+  margin: 0;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.family-card h2 {
+  font: 400 clamp(1.375rem, 3vw, 1.75rem)/1.12 Georgia, serif;
+  color: var(--ink);
+}
+
+.family-card p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.people-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; }
+.people-heading p { margin-block-start: .375rem; }
+.member-count {
+  padding: .25rem .625rem;
+  border-radius: 2rem;
+  color: var(--accent);
+  background: #e8efe3;
+  font-size: .8125rem;
+  font-weight: 700;
+}
+
+.member-list { display: grid; gap: .25rem; margin: 0; padding: 0; list-style: none; }
+.member-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: .5rem .75rem;
+  margin: 0;
+  padding-block: .75rem;
+  border-block-start: 1px solid var(--line);
+}
+.member-row:last-child { border-block-end: 1px solid var(--line); }
+.member-avatar {
+  display: grid;
+  place-items: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 50%;
+  color: var(--accent);
+  background: #e6ece1;
+  font-weight: 700;
+}
+.member-label { display: grid; }
+.member-label small { color: var(--muted); }
+.remove-access { grid-column: 2; border-color: #a5b3a7; font-size: .875rem; }
+
+.family-card .family-note {
+  margin-block-start: .25rem;
+  padding: .75rem;
+  border-radius: .75rem;
+  color: var(--accent);
+  background: #edf2e8;
+}
+
+.family-form { gap: .625rem; margin-block: .25rem 0; }
+.family-field { display: grid; gap: .375rem; font-weight: 650; }
+.family-form p, .issued-invite p { font-size: .875rem; }
+.issued-invite {
+  display: grid;
+  gap: .625rem;
+  padding: .75rem;
+  border: 1px solid #b9c9b6;
+  border-radius: .75rem;
+  background: #f1f5ee;
+}
+.issued-invite input { font-family: ui-monospace, monospace; }
+
+.family-options { gap: .25rem; }
+.family-options h2 { margin-block-end: .375rem; }
+.family-options details {
+  border-block-start: 1px solid var(--line);
+  padding-block: .125rem;
+}
+.family-options summary {
+  box-sizing: border-box;
+  min-block-size: 44px;
+  padding-block: .625rem;
+  color: var(--accent);
+  font-weight: 650;
+  cursor: pointer;
+}
+.family-options summary:focus-visible { outline: 3px solid #27866a; outline-offset: 2px; border-radius: .25rem; }
+.family-options .family-form { margin-block: .125rem .75rem; }
+.family-footer { padding-block: 1rem 1.5rem; color: var(--muted); font-size: .875rem; }
+.family-footer p { margin: 0; }
+
+@media (min-width: 34rem) {
+  .member-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .remove-access { grid-column: auto; }
+}
+
 @media (min-width: 58rem) {
   .access-layout {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
@@ -544,5 +840,19 @@ li + li { margin-block-start: .5rem; }
     border-radius: 1rem;
     background: #56604a url('/images/nidovra-login.webp') center 55% / cover no-repeat;
   }
+  .family-header { padding-block: 1.25rem; }
+  .family-hero {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 0;
+    min-block-size: 16rem;
+  }
+  .family-hero-art {
+    display: block;
+    background:
+      linear-gradient(90deg, #203d35, #203d3500 45%),
+      url('/images/nidovra-login.webp') center 60% / cover;
+  }
+  .family-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr); }
+  .people-card { grid-row: span 2; }
 }
 </style>

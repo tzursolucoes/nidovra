@@ -26,4 +26,21 @@ A guarda em `packages/db` aceita somente URLs PostgreSQL com IP de loopback, sem
 
 O build estático da SPA fica em `apps/web/dist`. No Cloudflare Pages, o comportamento de SPA mantém o fallback para a raiz quando o build não contém `404.html` na raiz. [Documentação do Cloudflare Pages](https://github.com/cloudflare/cloudflare-docs/blob/production/src/content/docs/pages/configuration/serving-pages.mdx).
 
-A região `aws-sa-east-1` é o alvo do projeto Neon independente. A matriz consultada aponta que Neon Functions e Object Storage não estão disponíveis em São Paulo. O provisionamento permanece bloqueado enquanto o desenho regional não for resolvido e autorizado. [Matriz de disponibilidade Neon](https://github.com/neondatabase/website/blob/64d230169cb641bec8a40ca420926342a5b56b2c/content/docs/introduction/regions.md#product-availability).
+O alvo do banco e do Managed Better Auth é um projeto Neon independente em `aws-sa-east-1`. A API Hono será hospedada no Cloudflare Workers e os documentos em R2 privado. Consulte o [ADR](adr/0001-infraestrutura-hospedada.md) e os resultados confirmados em `STATUS.md`.
+
+Os bindings HTTP `NEON_API_KEY` e `CLOUDFLARE_API_TOKEN` expõem referências de execução. O proxy do Codex Cloud substitui a referência em requisições HTTPS para o host autorizado do provedor. O Neon recebe `Authorization: Bearer`. A autenticação da Cloudflare depende do tipo de credencial. API Tokens usam Bearer, enquanto a Global API Key usa `X-Auth-Key` e `X-Auth-Email`. Mantenha a verificação TLS e registre somente códigos e metadados permitidos. Evite comandos com rastreamento de shell, saída de cabeçalhos ou persistência de segredos.
+
+Para testar o Worker Hono local sem usar credenciais, execute a partir de `apps/api`:
+
+```sh
+rtk bypass env -u CLOUDFLARE_API_TOKEN -u NEON_API_KEY WRANGLER_SEND_METRICS=false \
+  npm_config_cache=/tmp/nidovra-wrangler-npm-cache XDG_CONFIG_HOME=/tmp/nidovra-wrangler-config \
+  XDG_CACHE_HOME=/tmp/nidovra-wrangler-cache \
+  npx --yes --package=wrangler@4.168.0 wrangler dev --local \
+  --config wrangler.jsonc --ip 127.0.0.1 --port 8789 \
+  --var 'ALLOWED_ORIGINS:https://web.example.test' --persist-to /tmp/nidovra-wrangler-state
+```
+
+A sonda `GET /api/v1/health` deve responder HTTP 200. O endereço `https://web.example.test` é sintético e serve somente ao teste local. O Worker `nidovra-api` usa `https://nidovra.pages.dev` como origem permitida. `workers_dev` e URLs de preview estão desativados. A exposição pública exige uma rota dedicada e os testes de publicação do plano.
+
+A consulta PostgreSQL via HTTP foi validada no endpoint `/sql` do host exato do compute. O hostname padrão do driver, `api.c-2.sa-east-1.aws.neon.tech`, foi bloqueado pelo proxy nesta sessão. Use a configuração de endpoint validada para testes com esse proxy e mantenha a credencial do banco exclusivamente em memória ou no gerenciador de segredos do runtime.

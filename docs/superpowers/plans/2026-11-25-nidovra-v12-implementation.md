@@ -4,11 +4,11 @@
 
 **Goal:** entregar PWA de orçamento familiar compartilhado com importação de extratos Inter/Nubank, faturas e NF-e/NFC-e, conciliação sem duplicidade, aquisições com acompanhamento de pagamentos e dashboard financeiro verificável.
 
-**Architecture:** Vue 3/TypeScript/Vite, Vue Router, Pinia, Tailwind CSS, Cloudflare Pages; Hono/TypeScript em Neon Functions, Neon PostgreSQL, Managed Better Auth, Object Storage; Phosphor, ECharts, parsers locais. API como autoridade; aplicações e dados isolados do MotoHub.
+**Arquitetura:** Vue 3/TypeScript/Vite, Vue Router, Pinia, Tailwind CSS, Cloudflare Pages, Hono/TypeScript em Cloudflare Workers e R2 privado. PostgreSQL 18 e Managed Better Auth no Neon São Paulo. Phosphor, ECharts e parsers locais. A API é a autoridade dos dados. Veja o [ADR da infraestrutura](../../adr/0001-infraestrutura-hospedada.md).
 
 **Spec:** `docs/superpowers/specs/2026-11-25-nidovra-v12-design.md`. Plano vigente: `docs/superpowers/plans/2026-11-25-nidovra-v12-implementation.md`.
 
-**Estado:** preparado, não executado. Caminhos e contratos são propostas para repositório novo; não há código inspecionado, testes rodados, serviços criados ou deploy executado.
+**Estado:** consulte [`docs/STATUS.md`](../../STATUS.md) para o código, os testes e a infraestrutura efetivamente verificados. As etapas abertas deste plano descrevem trabalho pendente.
 
 ## Global Constraints
 
@@ -58,7 +58,7 @@ docs/{architecture,operations,security,import-formats}.md
 
 ## 2. Infraestrutura e configuração
 
-### Dados conhecidos (consulta Neon de 25/11/2026)
+### Configuração prevista e estado efetivo
 
 | Campo | Valor |
 |---|---|
@@ -66,12 +66,12 @@ docs/{architecture,operations,security,import-formats}.md
 | Projeto de referência (não utilizar) | MotoHub Homologação |
 | Project ID proibido como alvo | `falling-river-62191222` |
 | Região do projeto novo | AWS São Paulo (`aws-sa-east-1`, validar na API) |
-| Novo projeto | Nidovra — ainda não criado |
+| Projeto dedicado Nidovra | Identificador e evidências em [`docs/STATUS.md`](../../STATUS.md) |
 | PostgreSQL | 18 |
 | Compute | 0,25 CU |
 | Cloudflare Pages | novo projeto na mesma conta; ID/nome/URL ainda não provisionados |
 
-Não presumir produção existente. A consulta apenas verificou metadados do projeto de homologação; não verificou branches, credenciais, APIs de Functions/Storage ou limites atuais. Usar projeto Pages independente para a SPA, com branch de produção definida após inspeção do repositório. Criar exclusivamente projeto Neon novo na organização existente, região AWS São Paulo (`aws-sa-east-1`). Validar código regional, quota e disponibilidade de Auth/Functions/Storage antes de provisionar; se algum recurso não estiver disponível no Brasil, bloquear e registrar alternativa para decisão, sem deslocar automaticamente dados ou API. Registrar Project ID real após criação autorizada; proibir expressamente o ID do MotoHub nas verificações de ambiente. Referência: https://neon.com/demos/regional-latency. Identificadores sugeridos (não criados): `nidovra` (Pages), `nidovra` (banco), `nidovra_app` (role sem privilégios administrativos), `nidovra-documents` (namespace privado). CI e homologação devem usar banco/branch isolados; produção nunca serve de fixture de teste.
+A SPA usa um projeto Pages próprio. A API Hono tem como destino um Worker próprio com acesso a um bucket R2 privado. Banco e Auth pertencem a um projeto Neon dedicado na região `aws-sa-east-1`. Verificar plano, cotas, localização e permissões antes de provisionar. Registrar IDs reais e resultados em `docs/STATUS.md`. Identificadores sugeridos: `nidovra` (Pages e banco), `nidovra_app` (role com privilégio mínimo), `nidovra-documents` (bucket privado). CI e homologação usam bancos ou branches isolados. A produção não serve de fixture de teste.
 
 ### Variáveis de ambiente propostas
 
@@ -83,8 +83,7 @@ Não presumir produção existente. A consulta apenas verificou metadados do pro
 | `AUTH_BASE_URL` | servidor, integração Managed Better Auth |
 | `AUTH_SECRET` | servidor, somente se exigido pelo SDK escolhido |
 | `ALLOWED_ORIGINS` | servidor, lista explícita de origens Pages |
-| `STORAGE_NAMESPACE` | servidor, namespace próprio |
-| `STORAGE_CREDENTIALS` | segredo servidor quando exigido |
+| `DOCUMENTS` | binding do Worker para o bucket R2 privado do Nidovra |
 | `SMTP_*` | segredos servidor quando exigidos |
 | `APP_ENV` | ambiente de execução |
 
@@ -191,8 +190,8 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 **Interfaces:** `loadConfig()`, `createApp()`, `assertEnvironmentIsolation()`.
 
-- [ ] Step 1: conferir especificação, inspecionar repositório/alvo, verificar documentação e disponibilidade real de Neon Functions, Better Auth, Storage, Pages, quotas e limites; identificar Pages/branch/URLs sem imprimir segredos.
-- [ ] Step 2: verificar região São Paulo, quota e isolamento com novo projeto Neon, role/database/auth/storage próprios e novo projeto Pages; após autorização de implementação, provisionar e registrar IDs reais. Bloquear se não suportado. Nunca criar no projeto MotoHub.
+- [ ] Step 1: conferir especificação e repositório. Verificar disponibilidade, plano e permissões de Neon PostgreSQL/Auth e Cloudflare Pages/Workers/R2. Identificar os alvos sem imprimir segredos.
+- [ ] Step 2: provisionar e validar os recursos independentes do Nidovra dentro do plano gratuito, preservando São Paulo para Neon PostgreSQL/Auth. Registrar IDs e evidências em `docs/STATUS.md`.
 - [x] Step 3: escrever testes falhos de configuração ausente, health check sem dados privados e bloqueio de alvo errado de migração; executar RED.
 - [x] Step 4: implementar scaffold Vue/Hono, TS strict, scripts e CI; testar GREEN, build e smoke local; configurar SPA fallback e ambiente isolado.
 - [x] Step 5: revisar e registrar o bootstrap local no commit `7539a88`.
@@ -353,4 +352,4 @@ Migrações somente com URL de banco validada e role apropriada; scripts devem r
 
 ## 8. Execução
 
-Plano preparado para Codex/agentes usando Superpowers. Ler especificação antes de trabalhar, executar uma task por vez, manter checkboxes reais, revisar cada diff, registrar decisões técnicas em ADR quando divergirem do documento. Não implementar funcionalidades extras por iniciativa. Não iniciar deploy ou alterações remotas apenas porque este plano existe. Pendências: identificar conta Cloudflare e provisionar projeto Pages independente e branch, confirmar capabilities/cotas do Neon, obter fixtures reais dos bancos, validar região São Paulo, isolamento e design. Nenhum desses pontos foi concluído nesta sessão.
+Ler a especificação antes de trabalhar, executar uma task por vez, marcar somente etapas comprovadas, revisar cada diff e registrar decisões técnicas em ADR. Alterações remotas exigem autorização. O [`docs/STATUS.md`](../../STATUS.md) registra as evidências, bloqueios e a próxima ação.

@@ -17,17 +17,17 @@ Sete módulos: Visão geral, Movimentações, Cartões, Aquisições, Planejamen
 |---|---|
 | Frontend | Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind CSS; SPA/PWA |
 | Hosting | Cloudflare Pages, projeto independente na conta existente |
-| API | Hono/TypeScript, Neon Functions conforme capacidade disponível |
+| API | Hono/TypeScript em Cloudflare Workers |
 | Banco | Neon PostgreSQL 18, projeto dedicado na região AWS São Paulo (`aws-sa-east-1`), banco e role exclusivos |
 | Identidade | Neon Managed Better Auth, com isolamento de aplicação e sessão |
-| Arquivos | Neon Object Storage privado, namespace e autorização próprios |
+| Arquivos | Cloudflare R2 privado, bucket e autorização próprios |
 | Ícones | Phosphor Icons (`@phosphor-icons/vue`) |
 | Gráficos | Apache ECharts, carregamento sob demanda |
 | Importadores | PDF.js, Tesseract.js sob demanda, fast-xml-parser, Papa Parse, adaptador OFX |
 | E-mail | SMTP transacional substituível, apenas conta/convites |
 | Contingência | VPS AlmaLinux apenas se a infraestrutura escolhida for inviável e mediante aprovação |
 
-Infraestrutura: criar **novo projeto Neon** Nidovra na organização existente `org-young-bar-07539547`, na região AWS São Paulo (`aws-sa-east-1`, confirmar identificador na API antes de criar). O projeto MotoHub Homologação `falling-river-62191222` é apenas referência histórica e nunca será alvo de deploy ou migração. Usar projeto Cloudflare Pages próprio na mesma conta. Identificador do Pages, novo Project ID Neon, branches, endpoints e segredos serão registrados após provisionamento autorizado. Confirmar disponibilidade regional e cotas de Functions, Auth e Storage; não mudar região silenciosamente nem pressupor que todos os serviços residam no Brasil. Referência regional: https://neon.com/demos/regional-latency. Nenhuma infraestrutura foi criada ou modificada nesta revisão.
+Infraestrutura: usar projeto Neon dedicado ao Nidovra na organização `org-young-bar-07539547`, região AWS São Paulo (`aws-sa-east-1`), com PostgreSQL 18 e Managed Better Auth. Usar projeto Pages, Worker Hono e bucket R2 privado dedicados ao Nidovra. Confirmar planos, cotas e localização de dados antes de operar. Registrar somente IDs, endpoints e resultados não secretos em `docs/STATUS.md`. Veja o [ADR de infraestrutura](../../adr/0001-infraestrutura-hospedada.md).
 
 ## 3. Identidade e ambiente familiar (FAM)
 

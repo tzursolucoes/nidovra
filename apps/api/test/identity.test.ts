@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
+import { ActiveFamilyExists } from '../src/modules/identity/contracts.ts';
 
 const householdId = 'c2be4628-5347-4c78-9d13-32f7615edd78';
 const membershipId = '9af3db64-a705-4eb0-981d-cf1ac19984e8';
@@ -17,6 +18,7 @@ function setup(role: 'admin' | 'member' | null = 'admin') {
     getMembership: vi.fn(async () => role ? membership : null),
     listMembers: vi.fn(async () => [{ id: membershipId, authUserId: user.id, role: 'admin' as const }]),
     createHousehold: vi.fn(async () => ({ id: householdId, name: 'Casa', role: 'admin' as const })),
+    renameHousehold: vi.fn(async () => ({ id: householdId, name: 'Casa nova' } as { id: string; name: string } | null)),
     createInvitation: vi.fn(async () => ({ id: memberId, email: 'convite@example.test', expiresAt: '2030-01-01T00:00:00.000Z' })),
     acceptInvitation: vi.fn(async (): Promise<{ householdId: string } | null> => ({ householdId })),
     revokeMembership: vi.fn(async (): Promise<'revoked' | 'missing' | 'owner-protected'> => 'revoked'),
@@ -107,7 +109,7 @@ describe('sessão e famílias', () => {
       method: 'OPTIONS',
       headers: {
         Origin: requestOrigin,
-        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Method': 'PATCH',
         'Access-Control-Request-Headers': 'content-type,idempotency-key',
       },
     });
@@ -116,9 +118,52 @@ describe('sessão e famílias', () => {
     expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe(origin);
     expect(allowed.headers.get('Access-Control-Allow-Credentials')).toBe('true');
     expect(allowed.headers.get('Access-Control-Allow-Headers')?.toLowerCase()).toContain('idempotency-key');
+    expect(allowed.headers.get('Access-Control-Allow-Methods')?.split(',').map((value) => value.trim())).toContain('PATCH');
     expect((await preflight('https://outra.example.test')).headers.has('Access-Control-Allow-Origin')).toBe(false);
     expect((await app.request(path, mutation('POST', { name: 'A'.repeat(9000) }))).status).toBe(413);
     expect(store.createHousehold).not.toHaveBeenCalled();
+  });
+
+  it('permite renomear somente com origem confiável, nome válido e administrador ativo', async () => {
+    const path = `/api/v1/households/${householdId}`;
+    const request = mutation('PATCH', { name: ' Casa nova ', actorId: 'outro' });
+    const admin = setup();
+    expect((await admin.app.request(path, {
+      ...request, headers: { ...request.headers, Origin: 'https://outra.example.test' },
+    })).status).toBe(403);
+    expect((await admin.app.request(path, mutation('PATCH', { name: '  ' }))).status).toBe(422);
+    expect((await admin.app.request(path, mutation('PATCH', { name: 'x'.repeat(121) }))).status).toBe(422);
+    expect(admin.store.renameHousehold).not.toHaveBeenCalled();
+
+    const member = setup('member');
+    expect((await member.app.request(path, request)).status).toBe(403);
+    expect(member.store.renameHousehold).not.toHaveBeenCalled();
+    const outsider = setup(null);
+    expect((await outsider.app.request(path, request)).status).toBe(404);
+    expect(outsider.store.renameHousehold).not.toHaveBeenCalled();
+
+    const response = await admin.app.request(path, request);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ id: householdId, name: 'Casa nova' });
+    expect(admin.store.renameHousehold).toHaveBeenCalledWith({ actorId: user.id, householdId, name: 'Casa nova' });
+    admin.store.renameHousehold.mockResolvedValueOnce(null);
+    expect((await admin.app.request(path, request)).status).toBe(404);
+  });
+
+  it('devolve um conflito sem expor a família ativa na criação ou aceitação', async () => {
+    const { app, store } = setup();
+    store.createHousehold.mockRejectedValueOnce(new ActiveFamilyExists());
+    store.acceptInvitation.mockRejectedValueOnce(new ActiveFamilyExists());
+    for (const [path, payload] of [
+      ['/api/v1/households', { name: 'Casa' }],
+      ['/api/v1/invitations/accept', { token: 'B'.repeat(43) }],
+    ] as const) {
+      const response = await app.request(path, mutation('POST', payload));
+      expect(response.status).toBe(409);
+      const result = await response.json();
+      expect(result.code).toBe('ACTIVE_FAMILY_EXISTS');
+      expect(JSON.stringify(result)).not.toContain(householdId);
+    }
   });
 
   it('restringe convite e revogação a administrador e protege a administração titular', async () => {

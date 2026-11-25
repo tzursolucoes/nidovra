@@ -36,6 +36,7 @@
 - Chave única `memberships_household_user_key` sobre `(household_id, auth_user_id)`. A revogação preserva o vínculo e uma reativação atualiza a mesma linha.
 - Chave única `memberships_owner_target_key` sobre `(household_id, auth_user_id, is_active_admin)`, alvo da FK do titular.
 - Índice parcial `memberships_auth_user_index` em `(auth_user_id, household_id)` para consultar vínculos ativos de uma identidade.
+- Índice único parcial `memberships_one_active_per_user_uidx` em `auth_user_id` para linhas com `status = 'active'`. A migration `001a_identity_single_family.sql` garante um vínculo ativo por identidade e conserva os revogados.
 - `memberships_auth_user_id_check`, `memberships_role_check` e `memberships_status_check` validam identidade, papel e estado. As operações de leitura e escrita da aplicação devem consultar vínculo e família ativos.
 
 ## `invitations`

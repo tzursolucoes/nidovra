@@ -10,7 +10,7 @@ export function createApp(config: ReturnType<typeof loadConfig>, identity?: Iden
     origin: config.allowedOrigins,
     credentials: true,
     allowHeaders: ['Content-Type', 'Idempotency-Key'],
-    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   }));
   // A sonda mede a disponibilidade HTTP, sem consultar banco nem expor configuração.
   app.get('/api/v1/health', (context) => {

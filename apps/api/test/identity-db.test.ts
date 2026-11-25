@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { IdempotencyConflict } from '../src/modules/identity/contracts.ts';
+import { ActiveFamilyExists, IdempotencyConflict } from '../src/modules/identity/contracts.ts';
 import { createPostgresIdentityStore } from '../src/modules/identity/postgres.ts';
 
 const port = process.env.NIDOVRA_DB_TEST_PORT;
@@ -31,6 +31,81 @@ describe.skipIf(!port || !password)('repositório de identidade em PostgreSQL', 
     expect(await repository.listMemberships(actorId)).toMatchObject([{ householdId: first.id, role: 'admin' }]);
     await expect(repository.createHousehold({ ...command, name: 'Outro nome' })).rejects.toBeInstanceOf(IdempotencyConflict);
     expect(await repository.listMembers(first.id, randomUUID())).toBeNull();
+  });
+
+  it('impede duas criações concorrentes da mesma identidade e reverte a tentativa perdedora', async () => {
+    const actorId = randomUUID();
+    const first = { actorId, key: randomUUID(), name: 'Primeira família' };
+    const second = { actorId, key: randomUUID(), name: 'Segunda família' };
+    const outcomes = await Promise.allSettled([
+      repository.createHousehold(first),
+      repository.createHousehold(second),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.find((outcome) => outcome.status === 'rejected')?.reason).toBeInstanceOf(ActiveFamilyExists);
+    expect(await repository.listMemberships(actorId)).toHaveLength(1);
+    const families = await pool.query('SELECT id FROM households WHERE owner_auth_user_id = $1', [actorId]);
+    expect(families.rowCount).toBe(1);
+    const attempts = await pool.query('SELECT key FROM identity_idempotency WHERE actor_auth_user_id = $1', [actorId]);
+    expect(attempts.rowCount).toBe(1);
+  });
+
+  it('impede ingressos concorrentes em famílias distintas sem consumir o convite bloqueado', async () => {
+    const owners = [randomUUID(), randomUUID()];
+    const families = await Promise.all(owners.map((actorId) => repository.createHousehold({
+      actorId, key: randomUUID(), name: 'Família convidante',
+    })));
+    const guest = randomUUID();
+    const email = 'mesma-conta@example.test';
+    const requests = await Promise.all(families.map(async ({ id: householdId }, index) => {
+      const tokenHash = digest(randomUUID());
+      await repository.createInvitation({ actorId: owners[index]!, householdId, email, tokenHash, key: randomUUID() });
+      return { householdId, actorId: guest, email, tokenHash };
+    }));
+    const outcomes = await Promise.allSettled(requests.map((request) => repository.acceptInvitation(request)));
+    const winnerIndex = outcomes.findIndex((outcome) => outcome.status === 'fulfilled');
+    expect(winnerIndex).toBeGreaterThanOrEqual(0);
+    const loserIndex = 1 - winnerIndex;
+    const losingOutcome = outcomes[loserIndex];
+    expect(losingOutcome?.status).toBe('rejected');
+    if (losingOutcome?.status !== 'rejected') throw new Error('Convite conflitante não foi bloqueado.');
+    expect(losingOutcome.reason).toBeInstanceOf(ActiveFamilyExists);
+    const winner = requests[winnerIndex]!;
+    const loser = requests[loserIndex]!;
+    const memberships = await repository.listMemberships(guest);
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0]?.householdId).toBe(winner.householdId);
+    const invite = await pool.query('SELECT consumed_at FROM invitations WHERE token_hash = $1', [loser.tokenHash]);
+    expect(invite.rows[0]?.consumed_at).toBeNull();
+
+    const sameFamilyHash = digest(randomUUID());
+    await repository.createInvitation({
+      actorId: owners[winnerIndex]!, householdId: winner.householdId, email, tokenHash: sameFamilyHash, key: randomUUID(),
+    });
+    await expect(repository.acceptInvitation({ ...winner, tokenHash: sameFamilyHash }))
+      .resolves.toEqual({ householdId: winner.householdId });
+
+    await expect(repository.revokeMembership(winner.householdId, owners[winnerIndex]!, memberships[0]!.id))
+      .resolves.toBe('revoked');
+    await expect(repository.acceptInvitation(loser)).resolves.toEqual({ householdId: loser.householdId });
+    await expect(repository.createHousehold({ actorId: guest, key: randomUUID(), name: 'Terceira família' }))
+      .rejects.toBeInstanceOf(ActiveFamilyExists);
+  });
+
+  it('revalida a administração da família no banco antes de renomear', async () => {
+    const owner = randomUUID();
+    const guest = randomUUID();
+    const { id: householdId } = await repository.createHousehold({
+      actorId: owner, key: randomUUID(), name: 'Antes',
+    });
+    const email = 'membro-sem-edicao@example.test';
+    const tokenHash = digest(randomUUID());
+    await repository.createInvitation({ actorId: owner, householdId, email, tokenHash, key: randomUUID() });
+    await repository.acceptInvitation({ actorId: guest, email, tokenHash });
+    expect(await repository.renameHousehold({ actorId: guest, householdId, name: 'Negado' })).toBeNull();
+    await expect(repository.renameHousehold({ actorId: owner, householdId, name: 'Depois' }))
+      .resolves.toEqual({ id: householdId, name: 'Depois' });
+    expect(await repository.listMemberships(guest)).toMatchObject([{ householdName: 'Depois' }]);
   });
 
   it('impede reutilização concorrente, e-mail divergente e acesso após revogação', async () => {

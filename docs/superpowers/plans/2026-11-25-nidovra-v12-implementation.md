@@ -96,7 +96,7 @@ Todas as entidades de domínio levam `household_id` obrigatório, FK composta qu
 | Tabela | Campos essenciais e invariantes |
 |---|---|
 | households | id, name, status, owner reference |
-| memberships | household_id, auth_user_id, role, status; unique par |
+| memberships | household_id, auth_user_id, role, status; unicidade do par e de identidade com vínculo ativo |
 | invitations | household_id, email, token_hash, expires_at, consumed_at |
 | accounts | household_id, name, institution, kind, currency BRL, archived_at |
 | balance_anchors | account_id, effective_date, amount_cents, source, status; âncora válida única por referência |
@@ -200,7 +200,9 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 **Files:** `modules/identity/*`, `middleware/auth.ts`, `middleware/household.ts`, `features/auth/*`, `features/settings/*`, `001_identity.sql`.
 
-**Interfaces:** `requireSession`, `requireMembership`, `requireAdmin`, `acceptInvitation`.
+**Interfaces:** `requireSession`, `requireMembership`, `requireAdmin`, `acceptInvitation`, `renameHousehold`.
+
+Uma conta tem no máximo um vínculo familiar ativo. A migration `001a_identity_single_family.sql` protege a regra e interrompe a aplicação se houver conflitos legados. Somente administradores ativos podem editar o nome da família.
 
 - [x] Step 1: RED para sessão ausente, terceiro com ID forjado, convite expirado/reutilizado, e-mail incorreto, revogação e administrador removendo a si sem sucessão.
 - [ ] Step 2: implementar integração Managed Better Auth, verificação de e-mail, recuperação, revogação, convites transacionais e controle de acesso servidor em todos os caminhos.

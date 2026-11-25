@@ -19,6 +19,8 @@ INSERT INTO memberships (household_id, auth_user_id, role) VALUES
 SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $$
+DECLARE
+  violated_constraint text;
 BEGIN
   BEGIN
     UPDATE households SET owner_auth_user_id = 'titular-b'
@@ -45,6 +47,17 @@ BEGIN
     RAISE EXCEPTION 'O schema aceitou vínculos repetidos.';
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
+
+  BEGIN
+    INSERT INTO memberships (household_id, auth_user_id, role)
+    VALUES ('10000000-0000-0000-0000-000000000002', 'integrante-a', 'member');
+    RAISE EXCEPTION 'O schema aceitou a mesma identidade ativa em duas famílias.';
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS violated_constraint = CONSTRAINT_NAME;
+    IF violated_constraint <> 'memberships_one_active_per_user_uidx' THEN
+      RAISE;
+    END IF;
+  END;
 END;
 $$;
 
@@ -52,6 +65,17 @@ UPDATE memberships SET role = 'admin' WHERE auth_user_id = 'integrante-a';
 UPDATE households SET owner_auth_user_id = 'integrante-a'
 WHERE id = '10000000-0000-0000-0000-000000000001';
 UPDATE memberships SET status = 'revoked' WHERE auth_user_id = 'titular-a';
+INSERT INTO memberships (household_id, auth_user_id, role)
+VALUES ('10000000-0000-0000-0000-000000000002', 'titular-a', 'member');
+
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM memberships WHERE auth_user_id = 'titular-a') <> 2
+    OR (SELECT count(*) FROM memberships WHERE auth_user_id = 'titular-a' AND status = 'active') <> 1 THEN
+    RAISE EXCEPTION 'O histórico revogado precisa coexistir com o novo vínculo ativo.';
+  END IF;
+END;
+$$;
 
 INSERT INTO invitations (household_id, email, token_hash, expires_at)
 VALUES ('10000000-0000-0000-0000-000000000001', 'teste@example.test', repeat('a', 64), now() + interval '1 hour');

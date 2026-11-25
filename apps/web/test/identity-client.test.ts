@@ -142,6 +142,29 @@ describe('cliente de identidade', () => {
     await expect(client.createHousehold('Minha família', 'chave-sintetica')).resolves.toMatchObject({ id: 'familia' });
   });
 
+  it('envia somente o novo nome pelo PATCH da família indicada', async () => {
+    const client = createIdentityClient(async (input, init) => {
+      expect(input).toBe('/api/v1/households/familia%2Fexemplo');
+      expect(init?.method).toBe('PATCH');
+      expect(init?.credentials).toBe('include');
+      expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+      expect(JSON.parse(String(init?.body))).toEqual({ name: 'Casa nova' });
+      return Response.json({ id: 'familia/exemplo', name: 'Casa nova' });
+    });
+    await expect(client.renameHousehold('familia/exemplo', 'Casa nova'))
+      .resolves.toEqual({ id: 'familia/exemplo', name: 'Casa nova' });
+  });
+
+  it('identifica o conflito de família ativa sem exibir detalhes privados', async () => {
+    const client = createIdentityClient(async () => Response.json({
+      code: 'ACTIVE_FAMILY_EXISTS', message: 'identificador privado',
+    }, { status: 409 }));
+    const error = await client.accept('codigo-sintetico').catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(IdentityError);
+    expect(error).toMatchObject({ status: 409, code: 'ACTIVE_FAMILY_EXISTS' });
+    expect(String(error)).not.toContain('identificador privado');
+  });
+
   it('preserva a classe do erro sem propagar conteúdo privado do servidor', async () => {
     const client = createIdentityClient(async () => Response.json({ message: 'detalhe privado' }, { status: 503 }));
     const error = await client.session().catch((failure: unknown) => failure);

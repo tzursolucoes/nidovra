@@ -13,6 +13,9 @@ const members = ref<HouseholdMember[]>([]);
 const membersLoaded = ref(false);
 const householdId = ref('');
 const name = ref('');
+const renameDraft = ref<string | null>(null);
+const renameInput = ref<HTMLInputElement | null>(null);
+const renameButton = ref<HTMLButtonElement | null>(null);
 const email = ref('');
 const invitation = ref('');
 const inviteToken = ref('');
@@ -63,6 +66,7 @@ function returnToLogin() {
   membersLoaded.value = false;
   inviteToken.value = '';
   inviteRecipient.value = '';
+  renameDraft.value = null;
   authMode.value = 'login';
 }
 
@@ -76,9 +80,13 @@ async function run(operation: () => Promise<unknown>) {
   } catch (failure) {
     const status = failure instanceof IdentityError ? failure.status : undefined;
     if (status === 401) returnToLogin();
-    error.value = status === 503 && authMode.value === 'connecting' && !session.value
-      ? 'Não foi possível carregar sua sessão agora. Tente novamente em instantes.'
-      : errors[status ?? 0] ?? 'Não foi possível concluir a operação. Tente novamente.';
+    if (failure instanceof IdentityError && failure.code === 'ACTIVE_FAMILY_EXISTS') {
+      error.value = 'Esta conta já participa de uma família ativa. Atualize a página para carregar sua família.';
+    } else {
+      error.value = status === 503 && authMode.value === 'connecting' && !session.value
+        ? 'Não foi possível carregar sua sessão agora. Tente novamente em instantes.'
+        : errors[status ?? 0] ?? 'Não foi possível concluir a operação. Tente novamente.';
+    }
   } finally {
     pending.value = false;
     if (nextField) {
@@ -262,6 +270,48 @@ function createHousehold() {
   });
 }
 
+function changeHousehold() {
+  renameDraft.value = null;
+  return run(loadMembers);
+}
+
+async function openRename() {
+  if (selected.value?.role !== 'admin') return;
+  renameDraft.value = selected.value.householdName;
+  await nextTick();
+  renameInput.value?.focus();
+  renameInput.value?.select();
+}
+
+async function cancelRename() {
+  renameDraft.value = null;
+  await nextTick();
+  renameButton.value?.focus();
+}
+
+function renameHousehold() {
+  return run(async () => {
+    const context = session.value;
+    const household = selected.value;
+    const newName = renameDraft.value?.trim();
+    if (!context || household?.role !== 'admin') return;
+    if (!newName) {
+      error.value = 'Digite um nome para a família.';
+      return;
+    }
+    const renamed = await api().renameHousehold(household.householdId, newName);
+    session.value = {
+      ...context,
+      memberships: context.memberships.map((membership) => membership.householdId === renamed.id
+        ? { ...membership, householdName: renamed.name } : membership),
+    };
+    renameDraft.value = null;
+    notice.value = 'Nome da família atualizado.';
+    await nextTick();
+    familyHeading.value?.focus();
+  });
+}
+
 function createInvitation() {
   return run(async () => {
     inviteToken.value = '';
@@ -426,14 +476,33 @@ onMounted(() => run(checkSession));
               {{ members.length }} {{ members.length === 1 ? 'integrante' : 'integrantes' }}
             </span>
           </header>
-          <label v-if="session.memberships.length > 1" class="family-field" for="household">
-            Trocar de família
-            <select id="household" v-model="householdId" :disabled="pending" @change="run(loadMembers)">
-              <option v-for="item in session.memberships" :key="item.householdId" :value="item.householdId">
-                {{ item.householdName }}
-              </option>
-            </select>
-          </label>
+          <template v-if="session.memberships.length > 1">
+            <label class="family-field" for="household">
+              Família com vínculo anterior
+              <select id="household" v-model="householdId" :disabled="pending"
+                aria-describedby="legacy-family-help" @change="changeHousehold">
+                <option v-for="item in session.memberships" :key="item.householdId" :value="item.householdId">
+                  {{ item.householdName }}
+                </option>
+              </select>
+            </label>
+            <p id="legacy-family-help" class="family-note">Esta conta tem vínculos anteriores em mais de uma família.</p>
+          </template>
+          <template v-if="selected.role === 'admin'">
+            <button v-if="renameDraft === null" ref="renameButton" class="secondary" type="button"
+              :disabled="pending" @click="openRename">Editar nome da família</button>
+            <form v-else class="family-form" @submit.prevent="renameHousehold">
+              <label class="family-field" for="rename-household">
+                Nome da família
+                <input id="rename-household" ref="renameInput" v-model="renameDraft" maxlength="120"
+                  required :disabled="pending">
+              </label>
+              <div class="access-actions">
+                <button type="submit" :disabled="pending">Salvar nome</button>
+                <button class="secondary" type="button" :disabled="pending" @click="cancelRename">Cancelar</button>
+              </div>
+            </form>
+          </template>
           <ul v-if="membersLoaded && members.length" class="member-list">
             <li v-for="(member, index) in members" :key="member.id" class="member-row">
               <span class="member-avatar" aria-hidden="true">{{ member.authUserId === session.user.id ? 'V' : 'I' }}</span>
@@ -465,7 +534,7 @@ onMounted(() => run(checkSession));
                 <input id="invite-email" v-model="email" type="email" maxlength="254" required :disabled="pending"
                   placeholder="nome@exemplo.com" aria-describedby="invite-help">
               </label>
-              <p id="invite-help">Envie o código você mesmo. A pessoa entra com esse e-mail e cola o código em “Aceitar convite”.</p>
+              <p id="invite-help">Envie o código para a pessoa convidada. Ela pode aceitá-lo com esse e-mail se ainda estiver sem família ativa.</p>
               <button type="submit" :disabled="pending">Gerar código de convite</button>
             </form>
             <div v-if="inviteToken" class="issued-invite">
@@ -478,7 +547,7 @@ onMounted(() => run(checkSession));
               <p v-if="copyStatus" role="status">{{ copyStatus }}</p>
             </div>
           </template>
-          <p v-else-if="selected">Você já participa desta família. Se recebeu um convite para outro espaço, aceite abaixo.</p>
+          <p v-else-if="selected">Você já participa desta família. Cada conta pode ter uma família ativa.</p>
           <p v-else>Escolha um nome para o espaço da casa. Se alguém já criou a família, use o código recebido.</p>
 
           <form v-if="!selected" class="family-form" @submit.prevent="createHousehold">
@@ -490,8 +559,8 @@ onMounted(() => run(checkSession));
           </form>
         </section>
 
-        <section class="family-card family-options" aria-labelledby="options-heading">
-          <h2 id="options-heading">{{ selected ? 'Outras ações' : 'Já recebeu um convite?' }}</h2>
+        <section v-if="!selected" class="family-card family-options" aria-labelledby="options-heading">
+          <h2 id="options-heading">Já recebeu um convite?</h2>
           <details>
             <summary>Aceitar convite</summary>
             <form class="family-form" @submit.prevent="acceptInvitation">
@@ -502,17 +571,6 @@ onMounted(() => run(checkSession));
                   :disabled="pending" aria-describedby="accept-help">
               </label>
               <button type="submit" :disabled="pending">Confirmar convite</button>
-            </form>
-          </details>
-          <details v-if="selected">
-            <summary>Criar outra família</summary>
-            <form class="family-form" @submit.prevent="createHousehold">
-              <p>Crie um espaço separado se precisar acompanhar outra casa.</p>
-              <label class="family-field" for="another-household-name">
-                Nome da nova família
-                <input id="another-household-name" v-model="name" maxlength="120" required :disabled="pending">
-              </label>
-              <button type="submit" :disabled="pending">Criar nova família</button>
             </form>
           </details>
         </section>
@@ -853,6 +911,5 @@ li + li { margin-block-start: .5rem; }
       url('/images/nidovra-login.webp') center 60% / cover;
   }
   .family-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr); }
-  .people-card { grid-row: span 2; }
 }
 </style>

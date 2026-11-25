@@ -32,7 +32,7 @@ Infraestrutura: usar projeto Neon dedicado ao Nidovra na organização `org-youn
 ## 3. Identidade e ambiente familiar (FAM)
 
 - FAM-01: cadastro com e-mail verificado, login, recuperação e logout; proteção progressiva contra abuso e revogação de sessões anteriores após troca de senha.
-- FAM-02: criar ambiente familiar e convidar integrante via token expirável, de uso único, associado ao e-mail. Ambos podem consultar e editar dados financeiros, com credenciais próprias. Administrador gerencia convites e remoção de membros; membro não pode excluir ambiente ou remover administrador.
+- FAM-02: cada conta verificada participa de no máximo uma família ativa. A conta pode criar um ambiente ou aceitar um convite expirável, de uso único e associado ao e-mail. Administradores ativos podem renomear a família, gerenciar convites e remover integrantes. Os integrantes consultam e editam dados financeiros com credenciais próprias, respeitando suas permissões. A aceitação do convite preserva o código se houver conflito com um vínculo ativo. [ADR da família ativa](../../adr/0003-uma-familia-ativa-por-conta.md)
 - FAM-03: revogação de acesso imediata, inclusive documentos; trilha seletiva de ator, data, ação e referência para operações sensíveis. Identidade do autor não representa dívida pessoal.
 - FAM-04: exclusão de conta ou ambiente com confirmação explícita; saída individual preserva registros da família; administrador transfere administração antes de sair se houver outros membros. Política de retenção e expurgo de backups documentada antes de produção.
 

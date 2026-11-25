@@ -13,7 +13,7 @@ export interface HouseholdMember {
 }
 
 export class IdentityError extends Error {
-  constructor(readonly status: number) {
+  constructor(readonly status: number, readonly code?: 'ACTIVE_FAMILY_EXISTS') {
     super('Falha na operação de identidade.');
   }
 }
@@ -29,7 +29,11 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
     const response = await fetcher(`${origin?.origin ?? ''}/api/v1${path}`, {
       ...init, credentials: 'include', cache: 'no-store', redirect: 'error',
     });
-    if (!response.ok) throw new IdentityError(response.status);
+    if (!response.ok) {
+      const payload = response.status === 409 ? await response.json().catch(() => null) : null;
+      const code = payload?.code === 'ACTIVE_FAMILY_EXISTS' ? 'ACTIVE_FAMILY_EXISTS' : undefined;
+      throw new IdentityError(response.status, code);
+    }
     return response;
   }
 
@@ -37,14 +41,14 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
     return (await request(path, init)).json();
   }
 
-  function post(body: unknown, key?: string): RequestInit {
+  function mutation(method: 'POST' | 'PATCH', body: unknown, key?: string): RequestInit {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (key !== undefined) headers.set('Idempotency-Key', key);
-    return { method: 'POST', headers, body: JSON.stringify(body) };
+    return { method, headers, body: JSON.stringify(body) };
   }
 
   async function signIn(email: string, password: string) {
-    await request('/auth/sign-in/email', post({ email, password }));
+    await request('/auth/sign-in/email', mutation('POST', { email, password }));
   }
 
   const session = () => json<SessionContext>('/session/context');
@@ -52,16 +56,16 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
   return {
     signIn,
     async signUp(name: string, email: string, password: string) {
-      await request('/auth/sign-up/email', post({ name, email, password }));
+      await request('/auth/sign-up/email', mutation('POST', { name, email, password }));
     },
     async sendVerificationCode(email: string) {
-      await request('/auth/send-verification-email', post({ email }));
+      await request('/auth/send-verification-email', mutation('POST', { email }));
     },
     async verifyEmail(email: string, otp: string) {
-      await request('/auth/email-otp/verify-email', post({ email, otp }));
+      await request('/auth/email-otp/verify-email', mutation('POST', { email, otp }));
     },
     async signOut() {
-      await request('/auth/sign-out', post({}));
+      await request('/auth/sign-out', mutation('POST', {}));
     },
     session,
     async sessionAfterVerification(email: string, password?: string) {
@@ -89,14 +93,16 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
       return verifiedContext();
     },
     createHousehold: (name: string, key: string) =>
-      json<{ id: string; name: string; role: 'admin' }>('/households', post({ name }, key)),
+      json<{ id: string; name: string; role: 'admin' }>('/households', mutation('POST', { name }, key)),
+    renameHousehold: (householdId: string, name: string) =>
+      json<{ id: string; name: string }>(`/households/${encodeURIComponent(householdId)}`, mutation('PATCH', { name })),
     members: (householdId: string) =>
       json<{ members: HouseholdMember[] }>(`/households/${encodeURIComponent(householdId)}/members`),
     invite: (householdId: string, email: string, key: string) =>
       json<{ id: string; email: string; expiresAt: string; token: string }>(
-        `/households/${encodeURIComponent(householdId)}/invitations`, post({ email }, key),
+        `/households/${encodeURIComponent(householdId)}/invitations`, mutation('POST', { email }, key),
       ),
-    accept: (token: string) => json<{ householdId: string }>('/invitations/accept', post({ token })),
+    accept: (token: string) => json<{ householdId: string }>('/invitations/accept', mutation('POST', { token })),
     async revoke(householdId: string, memberId: string) {
       await request(`/households/${encodeURIComponent(householdId)}/members/${encodeURIComponent(memberId)}`, {
         method: 'DELETE',

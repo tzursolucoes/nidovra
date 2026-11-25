@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import {
+  ActiveFamilyExists,
   IdempotencyConflict,
   type IdentityStore,
   type Member,
@@ -17,6 +18,11 @@ async function transaction<Result>(pool: Pool, operation: (client: PoolClient) =
     return result;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => { discard = true; });
+    // FAM-02: o índice arbitra concorrência entre famílias. O rollback devolve o convite ao estado anterior.
+    if (!discard && error instanceof Error && 'code' in error && error.code === '23505' &&
+      'constraint' in error && error.constraint === 'memberships_one_active_per_user_uidx') {
+      throw new ActiveFamilyExists();
+    }
     throw error;
   } finally {
     client.release(discard);
@@ -125,6 +131,18 @@ export function createPostgresIdentityStore(pool: Pool): IdentityStore {
         );
         return { ...household, role: 'admin' as const };
       }));
+    },
+
+    renameHousehold({ actorId, householdId, name }) {
+      return transaction(pool, async (client) => {
+        const household = await lockHousehold(client, householdId);
+        if (!household || !await hasAdmin(client, householdId, actorId)) return null;
+        const { rows: [updated] } = await client.query<{ id: string; name: string }>(
+          'UPDATE households SET name = $2, updated_at = statement_timestamp() WHERE id = $1 RETURNING id, name',
+          [householdId, name],
+        );
+        return updated ?? null;
+      });
     },
 
     createInvitation({ actorId, householdId, key, email, tokenHash }) {

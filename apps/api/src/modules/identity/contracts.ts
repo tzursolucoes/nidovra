@@ -27,6 +27,12 @@ export interface CreateHousehold {
   name: string;
 }
 
+export interface RenameHousehold {
+  actorId: string;
+  householdId: string;
+  name: string;
+}
+
 export interface CreateInvitation {
   actorId: string;
   householdId: string;
@@ -52,6 +58,7 @@ export interface IdentityStore {
   getMembership(householdId: string, actorId: string): Promise<Membership | null>;
   listMembers(householdId: string, actorId: string): Promise<Member[] | null>;
   createHousehold(command: CreateHousehold): Promise<{ id: string; name: string; role: 'admin' }>;
+  renameHousehold(command: RenameHousehold): Promise<{ id: string; name: string } | null>;
   createInvitation(command: CreateInvitation): Promise<InvitationDetails | null>;
   acceptInvitation(command: AcceptInvitation): Promise<{ householdId: string } | null>;
   revokeMembership(
@@ -69,3 +76,6 @@ export interface IdentityDependencies {
 
 /** A mesma chave não pode ser reutilizada com outro conteúdo na mesma operação. */
 export class IdempotencyConflict extends Error {}
+
+/** FAM-02: a identidade já tem um vínculo familiar ativo. */
+export class ActiveFamilyExists extends Error {}

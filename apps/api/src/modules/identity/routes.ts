@@ -4,7 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { createMiddleware } from 'hono/factory';
 import { identityError, requireSession, type IdentityContext } from '../../middleware/auth.ts';
 import { isUuid, requireAdmin, requireMembership } from '../../middleware/household.ts';
-import { IdempotencyConflict, type IdentityDependencies } from './contracts.ts';
+import { ActiveFamilyExists, IdempotencyConflict, type IdentityDependencies } from './contracts.ts';
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
@@ -32,14 +32,21 @@ export function createIdentityRoutes(
     context.header('Cache-Control', 'no-store');
     await next();
   });
-  app.onError((error, context) => error instanceof IdempotencyConflict
-    ? identityError(context, 409, 'IDEMPOTENCY_CONFLICT', 'A chave já identifica outra solicitação.')
-    : identityError(context, 503, 'IDENTITY_UNAVAILABLE', 'Identidade temporariamente indisponível.'));
+  app.onError((error, context) => {
+    if (error instanceof IdempotencyConflict) {
+      return identityError(context, 409, 'IDEMPOTENCY_CONFLICT', 'A chave já identifica outra solicitação.');
+    }
+    if (error instanceof ActiveFamilyExists) {
+      return identityError(context, 409, 'ACTIVE_FAMILY_EXISTS', 'Sua conta já participa de uma família ativa.');
+    }
+    return identityError(context, 503, 'IDENTITY_UNAVAILABLE', 'Identidade temporariamente indisponível.');
+  });
 
   const session = requireSession(dependencies?.resolveSession);
   if (!dependencies) {
     app.get('/session/context', session);
     app.post('/households', session);
+    app.patch('/households/:id', session);
     app.get('/households/:id/members', session);
     app.post('/households/:id/invitations', session);
     app.post('/invitations/accept', session);
@@ -74,6 +81,21 @@ export function createIdentityRoutes(
     }
     const result = await store.createHousehold({ actorId: context.var.user.id, key: key.toLowerCase(), name });
     return context.json(result, 201);
+  });
+
+  app.patch('/households/:id', mutationOrigin, session, membership, requireAdmin, limit, async (context) => {
+    const name = await readText(context, 'name');
+    if (!name || name.length > 120) {
+      return identityError(context, 422, 'INVALID_INPUT', 'Informe um nome com até 120 caracteres.');
+    }
+    const result = await store.renameHousehold({
+      actorId: context.var.user.id,
+      householdId: context.var.membership.householdId,
+      name,
+    });
+    return result
+      ? context.json(result)
+      : identityError(context, 404, 'HOUSEHOLD_NOT_FOUND', 'Família indisponível.');
   });
 
   app.get('/households/:id/members', session, membership, async (context) => {

@@ -13,6 +13,12 @@ const name = ref('');
 const email = ref('');
 const invitation = ref('');
 const inviteToken = ref('');
+const authMode = ref<'login' | 'register' | 'verify'>('login');
+const accountName = ref('');
+const accountEmail = ref('');
+const accountPassword = ref('');
+const verificationCode = ref('');
+const registering = computed(() => authMode.value === 'register');
 const error = ref('');
 const notice = ref('');
 const pending = ref(false);
@@ -24,6 +30,7 @@ const errors: Record<number, string> = {
   404: 'O registro não está disponível para sua conta.',
   409: 'A operação não está mais disponível. Atualize a página e tente novamente.',
   422: 'Confira os dados informados e tente novamente.',
+  429: 'Aguarde um pouco antes de tentar novamente.',
   503: 'O serviço de identidade está indisponível neste ambiente.',
 };
 
@@ -81,6 +88,84 @@ async function loadSession(preferredId = householdId.value) {
   await loadMembers();
 }
 
+function switchAuthMode() {
+  authMode.value = authMode.value === 'login' ? 'register' : 'login';
+  accountPassword.value = '';
+  verificationCode.value = '';
+  error.value = '';
+  notice.value = '';
+}
+
+function submitAuth() {
+  return run(async () => {
+    const password = accountPassword.value;
+    accountPassword.value = '';
+    const address = accountEmail.value.trim();
+    if (registering.value) {
+      await api().signUp(accountName.value.trim(), address, password);
+      accountName.value = '';
+      authMode.value = 'verify';
+      return;
+    }
+    try {
+      await api().signIn(address, password);
+    } catch (failure) {
+      if (failure instanceof IdentityError && failure.status === 401) {
+        error.value = 'E-mail ou senha incorretos.';
+        return;
+      }
+      if (failure instanceof IdentityError && failure.status === 403) {
+        authMode.value = 'verify';
+        return;
+      }
+      throw failure;
+    }
+    accountEmail.value = '';
+    await loadSession();
+  });
+}
+
+function resendVerification() {
+  return run(async () => {
+    await api().sendVerificationCode(accountEmail.value.trim());
+    verificationCode.value = '';
+    notice.value = 'Confira sua caixa de entrada para receber o código.';
+  });
+}
+
+function verifyEmail() {
+  return run(async () => {
+    try {
+      await api().verifyEmail(accountEmail.value.trim(), verificationCode.value.trim());
+    } catch (failure) {
+      if (failure instanceof IdentityError && [400, 401, 422].includes(failure.status)) {
+        error.value = 'Código inválido ou expirado. Confira o código ou peça um novo.';
+        return;
+      }
+      throw failure;
+    }
+    verificationCode.value = '';
+    authMode.value = 'login';
+    notice.value = 'E-mail verificado. Entre com sua senha.';
+  });
+}
+
+function signOut() {
+  return run(async () => {
+    await api().signOut();
+    session.value = undefined;
+    members.value = [];
+    householdId.value = '';
+    name.value = '';
+    email.value = '';
+    invitation.value = '';
+    inviteToken.value = '';
+    keys.clear();
+    keysActor = undefined;
+    notice.value = 'Sessão encerrada.';
+  });
+}
+
 function createHousehold() {
   return run(async () => {
     const operation = `criar:${name.value.trim()}`;
@@ -122,7 +207,13 @@ function revokeMembership(member: HouseholdMember) {
   });
 }
 
-onMounted(() => run(() => loadSession()));
+onMounted(() => run(async () => {
+  try {
+    await loadSession();
+  } catch (failure) {
+    if (!(failure instanceof IdentityError && failure.status === 401)) throw failure;
+  }
+}));
 </script>
 
 <template>
@@ -131,10 +222,50 @@ onMounted(() => run(() => loadSession()));
     <p v-if="pending" role="status">Aguarde…</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
-    <button v-if="!session && !pending" type="button" @click="run(() => loadSession())">Atualizar sessão</button>
+    <form v-if="!session && authMode === 'verify'" class="access-form" aria-labelledby="verify-heading"
+      @submit.prevent="verifyEmail">
+      <h2 id="verify-heading">Confirme seu e-mail</h2>
+      <p>Informe o código de verificação de <strong>{{ accountEmail }}</strong>.</p>
+      <label for="verification-code">
+        Código de verificação
+        <input id="verification-code" v-model="verificationCode" inputmode="numeric" autocomplete="one-time-code"
+          maxlength="32" required :disabled="pending">
+      </label>
+      <div class="access-actions">
+        <button type="submit" :disabled="pending">Confirmar código</button>
+        <button class="secondary" type="button" :disabled="pending" @click="resendVerification">Reenviar código</button>
+        <button class="secondary" type="button" :disabled="pending" @click="switchAuthMode">Voltar ao login</button>
+      </div>
+    </form>
+    <form v-else-if="!session" class="access-form" aria-labelledby="access-heading" @submit.prevent="submitAuth">
+      <h2 id="access-heading">{{ registering ? 'Criar conta' : 'Entrar' }}</h2>
+      <label v-if="registering" for="account-name">
+        Nome
+        <input id="account-name" v-model="accountName" autocomplete="name" maxlength="120" required :disabled="pending">
+      </label>
+      <label for="account-email">
+        E-mail
+        <input id="account-email" v-model="accountEmail" type="email" autocomplete="username" maxlength="254" required :disabled="pending">
+      </label>
+      <label for="account-password">
+        Senha
+        <input id="account-password" v-model="accountPassword" type="password"
+          :autocomplete="registering ? 'new-password' : 'current-password'"
+          :minlength="registering ? 8 : undefined" maxlength="128" required :disabled="pending">
+      </label>
+      <div class="access-actions">
+        <button type="submit" :disabled="pending">{{ registering ? 'Criar conta' : 'Entrar' }}</button>
+        <button class="secondary" type="button" :disabled="pending" @click="switchAuthMode">
+          {{ registering ? 'Já tenho conta' : 'Criar uma conta' }}
+        </button>
+      </div>
+    </form>
 
     <template v-if="session">
-      <p>{{ session.user.email }}</p>
+      <div class="access-actions">
+        <p>{{ session.user.email }}</p>
+        <button class="secondary" type="button" :disabled="pending" @click="signOut">Sair</button>
+      </div>
       <section v-if="session.memberships.length" aria-labelledby="household-heading">
         <h2 id="household-heading">Minha família</h2>
         <label for="household">Família</label>
@@ -188,6 +319,12 @@ input, select, button { min-height: 44px; padding: .5rem .75rem; font: inherit; 
 input, select { box-sizing: border-box; width: 100%; border: 1px solid #52665c; border-radius: .75rem; }
 button { width: fit-content; border: 1px solid #183e35; border-radius: .75rem; color: white; background: #183e35; }
 button:disabled { opacity: .55; }
+.access-form { max-width: 26rem; }
+.access-form > label { display: grid; gap: .25rem; }
+.access-form > p { overflow-wrap: anywhere; }
+.access-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.access-actions > p { overflow-wrap: anywhere; }
+.secondary { color: #183e35; background: transparent; }
 li + li { margin-top: .5rem; }
 [role="alert"] { color: #8a3929; }
 </style>

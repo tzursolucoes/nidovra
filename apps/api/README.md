@@ -12,6 +12,8 @@ O módulo expõe a aplicação HTTP Hono. A entrada local `src/server.ts` atende
 
 As rotas usam o prefixo `/api/v1`. Mutações exigem `Origin` presente em `ALLOWED_ORIGINS`. CORS permite credenciais somente nas origens explícitas. As respostas privadas incluem `Cache-Control: no-store`.
 
+O Worker integra Neon Managed Better Auth em `POST /auth/sign-in/email`, `POST /auth/sign-up/email`, `POST /auth/email-otp/verify-email`, `POST /auth/send-verification-email` e `POST /auth/sign-out`. A resposta de autenticação é `{"ok":true}` ou erro controlado. O Pages faz o proxy na mesma origem. O Worker encaminha somente campos permitidos e mantém o cookie do provedor restrito a HTTPS e inacessível a JavaScript. A resolução de sessão consulta o Neon a cada requisição privada e exige e-mail confirmado para acesso aos dados.
+
 | Operação | Entrada | Resposta |
 |---|---|---|
 | `GET /session/context` | Sessão vigente e com e-mail verificado | `200` com `user: { id, email }` e `memberships: [{ id, householdId, householdName, role }]` |
@@ -27,7 +29,7 @@ O adaptador PostgreSQL usa as tabelas `households`, `memberships`, `invitations`
 
 O token é retornado ao administrador para compartilhar, sem envio de e-mail. A API exige segredo de convite de pelo menos 32 bytes e registra somente o hash do token no banco. Preservar o segredo durante a janela de reenvio permite devolver o mesmo token. Após rotação, a mesma chave pode gerar conflito e o administrador pode emitir um novo convite. O cliente deve evitar guardar o token em armazenamento persistente ou expô-lo em logs.
 
-O provedor Managed Better Auth, recuperação, revogação de sessões, auditoria seletiva, limites por ator e transferência de titularidade aguardam implementação e validação. Os testes usam sessão sintética em memória e PostgreSQL descartável. Eles não demonstram validação de cookies ou autenticação contra um projeto hospedado.
+Recuperação de senha, revogação global de sessões, auditoria seletiva, validação de limites por ator e transferência de titularidade permanecem pendentes. Os testes locais usam sessões simuladas e PostgreSQL descartável. A entrega do código de verificação exige um teste com endereço controlado pelo proprietário.
 
 ## Testes
 

@@ -26,7 +26,7 @@ A guarda em `packages/db` aceita somente URLs PostgreSQL com IP de loopback, sem
 
 O build estático da SPA fica em `apps/web/dist`. No Cloudflare Pages, o comportamento de SPA mantém o fallback para a raiz quando o build não contém `404.html` na raiz. [Documentação do Cloudflare Pages](https://github.com/cloudflare/cloudflare-docs/blob/production/src/content/docs/pages/configuration/serving-pages.mdx).
 
-O alvo do banco e do Managed Better Auth é um projeto Neon independente em `aws-sa-east-1`. A API Hono será hospedada no Cloudflare Workers e os documentos em R2 privado. Consulte o [ADR](adr/0001-infraestrutura-hospedada.md) e os resultados confirmados em `STATUS.md`.
+O banco e o Managed Better Auth ficam no projeto Neon independente em `aws-sa-east-1`. A API Hono roda no Cloudflare Workers. Para os documentos, o destino escolhido é um bucket privado em Garage no VPS. O serviço de armazenamento aguarda provisionamento. Consulte o [ADR de infraestrutura](adr/0001-infraestrutura-hospedada.md), o [ADR de armazenamento](adr/0002-armazenamento-vps.md) e os resultados confirmados em `STATUS.md`.
 
 Os bindings HTTP `NEON_API_KEY` e `CLOUDFLARE_API_TOKEN` expõem referências de execução. O proxy do Codex Cloud substitui a referência em requisições HTTPS para o host autorizado do provedor. O Neon recebe `Authorization: Bearer`. A autenticação da Cloudflare depende do tipo de credencial. API Tokens usam Bearer, enquanto a Global API Key usa `X-Auth-Key` e `X-Auth-Email`. Mantenha a verificação TLS e registre somente códigos e metadados permitidos. Evite comandos com rastreamento de shell, saída de cabeçalhos ou persistência de segredos.
 
@@ -43,6 +43,21 @@ rtk bypass env -u CLOUDFLARE_API_TOKEN -u NEON_API_KEY WRANGLER_SEND_METRICS=fal
 
 A sonda `GET /api/v1/health` deve responder HTTP 200. O endereço `https://web.example.test` é sintético e serve somente ao teste local. O Worker `nidovra-api` usa `https://nidovra.pages.dev` como origem permitida. O endpoint do Worker em `workers.dev` atende à aplicação de produção. As URLs de preview do Worker ficam desativadas. Valide a sonda com a origem de produção e confirme que as rotas privadas retornam HTTP 503 enquanto a integração de identidade estiver indisponível.
 
-Publique o build estático no projeto Pages `nidovra`, usando `main` como branch de produção. Para esse build, configure `VITE_API_BASE_URL=https://nidovra-api.tzursolucoes.workers.dev`. A variável expõe somente a origem pública da API. Confirme HTTP 200 no HTML, no JavaScript e no fallback SPA antes de remover uma prévia anterior.
+Publique o build de produção do projeto Pages `nidovra` a partir de `apps/web`, mantendo `VITE_API_BASE_URL` vazio. O Wrangler inclui `apps/web/functions` quando for executado desse diretório. O navegador usa `https://nidovra.pages.dev/api/v1/*`; o proxy encaminha as requisições ao Worker. Confira HTML, fallback SPA e a sonda em `/api/v1/health` antes de concluir a publicação.
+
+Configure `NEON_AUTH_BASE_URL`, `DATABASE_URL` e `INVITATION_TOKEN_SECRET` nos segredos do Worker. A conexão de runtime deve usar a role dedicada `nidovra_app` com TLS e privilégio de leitura e escrita apenas nas tabelas de identidade. Valide a origem exata do Pages na lista de origens confiáveis do Neon e mantenha a verificação de e-mail obrigatória com código OTP. O SMTP compartilhado do Neon permite validar os primeiros acessos, com limites de envio. [Checklist de Auth do Neon](https://neon.com/docs/auth/production-checklist)
 
 A consulta PostgreSQL via HTTP foi validada no endpoint `/sql` do host exato do compute. O hostname padrão do driver, `api.c-2.sa-east-1.aws.neon.tech`, foi bloqueado pelo proxy nesta sessão. Use a configuração de endpoint validada para testes com esse proxy e mantenha a credencial do banco exclusivamente em memória ou no gerenciador de segredos do runtime.
+
+## VPS de documentos
+
+| Dado operacional | Valor informado pelo proprietário |
+| --- | --- |
+| Host de administração SSH | `184.107.88.100` |
+| Porta SSH | `22` |
+| Usuário de acesso inicial | `root` |
+| Estado | Dados recebidos. Conexão e ambiente ainda por verificar. |
+
+O SSH é destinado à administração do servidor. Guarde as credenciais administrativas em um cofre e restrinja o acesso operacional a uma conta dedicada por chave SSH. O Worker deve usar uma credencial S3 exclusiva, de escopo limitado ao bucket privado do Nidovra.
+
+Antes de ativar uploads, valide o espaço disponível, a identidade do host, o domínio e o TLS do endpoint S3. Confirme pelo terminal a gravação e a leitura de um arquivo sintético, a rejeição de acesso anônimo ou de outra família e a restauração de um backup mantido fora do VPS. Registre em `STATUS.md` o endpoint aprovado e a evidência de verificação, sem credenciais.

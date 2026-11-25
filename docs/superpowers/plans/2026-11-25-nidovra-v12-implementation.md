@@ -4,7 +4,7 @@
 
 **Goal:** entregar PWA de orçamento familiar compartilhado com importação de extratos Inter/Nubank, faturas e NF-e/NFC-e, conciliação sem duplicidade, aquisições com acompanhamento de pagamentos e dashboard financeiro verificável.
 
-**Arquitetura:** Vue 3/TypeScript/Vite, Vue Router, Pinia, Tailwind CSS, Cloudflare Pages, Hono/TypeScript em Cloudflare Workers e R2 privado. PostgreSQL 18 e Managed Better Auth no Neon São Paulo. Phosphor, ECharts e parsers locais. A API é a autoridade dos dados. Veja o [ADR da infraestrutura](../../adr/0001-infraestrutura-hospedada.md).
+**Arquitetura:** Vue 3/TypeScript/Vite, Vue Router, Pinia, Tailwind CSS, Cloudflare Pages e Hono/TypeScript em Cloudflare Workers. PostgreSQL 18 e Managed Better Auth no Neon São Paulo. Documentos privados no Garage do VPS. Phosphor, ECharts e parsers locais. A API é a autoridade dos dados. [ADR de armazenamento de documentos](../../adr/0002-armazenamento-vps.md)
 
 **Spec:** `docs/superpowers/specs/2026-11-25-nidovra-v12-design.md`. Plano vigente: `docs/superpowers/plans/2026-11-25-nidovra-v12-implementation.md`.
 
@@ -71,7 +71,7 @@ docs/{architecture,operations,security,import-formats}.md
 | Compute | 0,25 CU |
 | Cloudflare Pages | novo projeto na mesma conta; ID/nome/URL ainda não provisionados |
 
-A SPA usa um projeto Pages próprio. A API Hono tem como destino um Worker próprio com acesso a um bucket R2 privado. Banco e Auth pertencem a um projeto Neon dedicado na região `aws-sa-east-1`. Verificar plano, cotas, localização e permissões antes de provisionar. Registrar IDs reais e resultados em `docs/STATUS.md`. Identificadores sugeridos: `nidovra` (Pages e banco), `nidovra_app` (role com privilégio mínimo), `nidovra-documents` (bucket privado). CI e homologação usam bancos ou branches isolados. A produção não serve de fixture de teste.
+A SPA usa um projeto Pages próprio. A API Hono tem como destino um Worker próprio e acessará o bucket privado no VPS via S3 sobre HTTPS. Banco e Auth pertencem a um projeto Neon dedicado na região `aws-sa-east-1`. Verificar plano, cotas, localização e permissões antes de provisionar. Registrar IDs reais e resultados em `docs/STATUS.md`. Identificadores sugeridos: `nidovra` (Pages e banco), `nidovra_app` (role com privilégio mínimo), `nidovra-documents` (bucket privado). CI e homologação usam bancos ou branches isolados. A produção não serve de fixture de teste.
 
 ### Variáveis de ambiente propostas
 
@@ -80,10 +80,10 @@ A SPA usa um projeto Pages próprio. A API Hono tem como destino um Worker próp
 | `VITE_API_BASE_URL` | frontend, URL pública da API |
 | `VITE_AUTH_BASE_URL` | frontend, endpoint público de auth se necessário |
 | `DATABASE_URL` | segredo servidor, role restrita ao banco próprio |
-| `AUTH_BASE_URL` | servidor, integração Managed Better Auth |
+| `NEON_AUTH_BASE_URL` | servidor, integração Managed Better Auth |
 | `AUTH_SECRET` | servidor, somente se exigido pelo SDK escolhido |
 | `ALLOWED_ORIGINS` | servidor, lista explícita de origens Pages |
-| `DOCUMENTS` | binding do Worker para o bucket R2 privado do Nidovra |
+| `DOCUMENTS_S3_*` | endpoint HTTPS, bucket e credenciais privadas do Garage, na etapa de documentos |
 | `SMTP_*` | segredos servidor quando exigidos |
 | `APP_ENV` | ambiente de execução |
 

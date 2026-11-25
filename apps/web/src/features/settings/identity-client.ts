@@ -44,6 +44,21 @@ export function createIdentityClient(fetcher: Fetcher = fetch, configuredOrigin 
   }
 
   return {
+    async signIn(email: string, password: string) {
+      await request('/auth/sign-in/email', post({ email, password }));
+    },
+    async signUp(name: string, email: string, password: string) {
+      await request('/auth/sign-up/email', post({ name, email, password }));
+    },
+    async sendVerificationCode(email: string) {
+      await request('/auth/send-verification-email', post({ email }));
+    },
+    async verifyEmail(email: string, otp: string) {
+      await request('/auth/email-otp/verify-email', post({ email, otp }));
+    },
+    async signOut() {
+      await request('/auth/sign-out', post({}));
+    },
     session: () => json<SessionContext>('/session/context'),
     createHousehold: (name: string, key: string) =>
       json<{ id: string; name: string; role: 'admin' }>('/households', post({ name }, key)),

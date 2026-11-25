@@ -1,5 +1,12 @@
 # Estado do projeto
 
+## Continuidade de identidade e documentos
+
+- Task 1: integrados cadastro por e-mail, confirmação por código, login, saída e resolução de sessão pelo Neon. O Pages encaminha pela mesma origem do site. O Neon confirmou a exigência de OTP e a origem de produção autorizada.
+- Desktop: 28 testes passaram na suíte padrão. Os três testes dependentes de banco passaram separadamente com PostgreSQL 18 isolado, assim como a verificação de catálogo, restrições e comentários. Typecheck, build, dry-run do Worker e compilação da Functions passaram.
+- Garage no VPS é o destino definido para arquivos privados. O acesso SSH informado está documentado sem senha. O provisionamento e os testes do armazenamento seguem abertos na Task 0. [Operação](operations.md) · [ADR do armazenamento](adr/0002-armazenamento-vps.md)
+- Próxima validação de identidade: conferir publicação e sessão no domínio oficial. A entrega real de e-mail, o login com conta controlada, o fluxo com dois integrantes e a recuperação de senha ainda não foram validados.
+
 ## Situação atual · produção em 25/11/2026
 
 - Branch de trabalho e publicação `main`. O histórico da antiga `nidovra-development` foi incorporado por avanço linear, incluindo `5ebed20` (fatia de identidade) e `6687c81` (evidência da prévia anterior).
@@ -8,7 +15,7 @@
 - Worker `nidovra-api` na versão `5ca49642-0ebb-42bf-b422-513b8d892b83`. A sonda publicada retornou HTTP 200, `Cache-Control: no-store` e CORS para a origem do Pages. A rota de sessão retornou HTTP 503 `IDENTITY_UNAVAILABLE`.
 - Neon `purple-wave-70846120`, branch `main` e banco `nidovra` reaproveitados. A API e a consulta SQL confirmaram São Paulo, PostgreSQL 18.7, `neon_auth` e zero tabelas no schema `public`. Nenhuma migração remota foi aplicada.
 - Desktop: instalação com lockfile congelado, 22 testes aprovados, typecheck, build e dry-run do Wrangler. Três testes de integração PostgreSQL foram pulados por exigirem instância isolada. RTK usou saída integral em instalação, typecheck e build quando a versão instalada omitiu erros ou executou o compilador sem a configuração do workspace. Avaliação visual exclusiva do proprietário.
-- Task 0 segue parcial por R2. A Cloudflare confirmou HTTP 403, código `10042`, e exige ativação da assinatura no painel. A criação do bucket e o binding `DOCUMENTS` continuam pendentes. A Task 1 segue parcial até a integração real de sessão, login e e-mail e as migrações de domínio.
+- Na primeira publicação, o R2 estava inativo e a API retornou HTTP 403, código `10042`. O armazenamento agora seguirá o ADR do VPS.
 
 ## Histórico do bootstrap e da primeira prévia
 - Versão documental 1.2. Bootstrap local da Task 0 implementado na branch `nidovra-development`, a partir de `514c2b3` da `main`. A etapa remota da Task 0 segue bloqueada.

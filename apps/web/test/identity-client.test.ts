@@ -12,6 +12,72 @@ describe('cliente de identidade', () => {
     await expect(client.session()).resolves.toEqual(context);
   });
 
+  it('envia entrada, cadastro e saída na mesma origem sem ler dados de autenticação', async () => {
+    const calls: [RequestInfo | URL, RequestInit | undefined][] = [];
+    const client = createIdentityClient(async (input, init) => {
+      calls.push([input, init]);
+      return new Response(null, { status: 204 });
+    });
+
+    await expect(client.signIn('autor@example.test', 'senha-sintetica')).resolves.toBeUndefined();
+    await expect(client.signUp('Conta de teste', 'autor@example.test', 'senha-sintetica')).resolves.toBeUndefined();
+    await expect(client.signOut()).resolves.toBeUndefined();
+    expect(calls.map(([input, init]) => ({
+      input,
+      method: init?.method,
+      credentials: init?.credentials,
+      cache: init?.cache,
+      contentType: new Headers(init?.headers).get('Content-Type'),
+      body: JSON.parse(String(init?.body)),
+    }))).toEqual([
+      {
+        input: '/api/v1/auth/sign-in/email', method: 'POST', credentials: 'include', cache: 'no-store',
+        contentType: 'application/json', body: { email: 'autor@example.test', password: 'senha-sintetica' },
+      },
+      {
+        input: '/api/v1/auth/sign-up/email', method: 'POST', credentials: 'include', cache: 'no-store',
+        contentType: 'application/json',
+        body: { name: 'Conta de teste', email: 'autor@example.test', password: 'senha-sintetica' },
+      },
+      {
+        input: '/api/v1/auth/sign-out', method: 'POST', credentials: 'include', cache: 'no-store',
+        contentType: 'application/json', body: {},
+      },
+    ]);
+  });
+
+  it('preserva o status do login pendente de verificação sem propagar detalhes do provedor', async () => {
+    const client = createIdentityClient(async () => Response.json({ message: 'detalhe privado' }, { status: 403 }));
+    const error = await client.signIn('autor@example.test', 'senha-sintetica').catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(IdentityError);
+    expect(error).toMatchObject({ status: 403 });
+    expect(String(error)).not.toContain('detalhe privado');
+  });
+
+  it('solicita e confirma o código de verificação pelo contrato do provedor', async () => {
+    const calls: { path: string; payload: unknown }[] = [];
+    const client = createIdentityClient(async (input, init) => {
+      expect(init?.method).toBe('POST');
+      expect(init?.credentials).toBe('include');
+      calls.push({ path: String(input), payload: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: 204 });
+    });
+
+    await client.sendVerificationCode('autor@example.test');
+    await client.verifyEmail('autor@example.test', '012345');
+
+    expect(calls).toEqual([
+      {
+        path: '/api/v1/auth/send-verification-email',
+        payload: { email: 'autor@example.test' },
+      },
+      {
+        path: '/api/v1/auth/email-otp/verify-email',
+        payload: { email: 'autor@example.test', otp: '012345' },
+      },
+    ]);
+  });
+
   it('preserva a chave de idempotência do comando de criação', async () => {
     const client = createIdentityClient(async (input, init) => {
       expect(input).toBe('/api/v1/households');

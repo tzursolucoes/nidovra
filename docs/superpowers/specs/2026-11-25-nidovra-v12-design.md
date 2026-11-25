@@ -20,14 +20,14 @@ Sete módulos: Visão geral, Movimentações, Cartões, Aquisições, Planejamen
 | API | Hono/TypeScript em Cloudflare Workers |
 | Banco | Neon PostgreSQL 18, projeto dedicado na região AWS São Paulo (`aws-sa-east-1`), banco e role exclusivos |
 | Identidade | Neon Managed Better Auth, com isolamento de aplicação e sessão |
-| Arquivos | Cloudflare R2 privado, bucket e autorização próprios |
+| Arquivos | Garage no VPS, bucket privado acessado pela API S3 por HTTPS |
 | Ícones | Phosphor Icons (`@phosphor-icons/vue`) |
 | Gráficos | Apache ECharts, carregamento sob demanda |
 | Importadores | PDF.js, Tesseract.js sob demanda, fast-xml-parser, Papa Parse, adaptador OFX |
 | E-mail | SMTP transacional substituível, apenas conta/convites |
 | Contingência | VPS AlmaLinux apenas se a infraestrutura escolhida for inviável e mediante aprovação |
 
-Infraestrutura: usar projeto Neon dedicado ao Nidovra na organização `org-young-bar-07539547`, região AWS São Paulo (`aws-sa-east-1`), com PostgreSQL 18 e Managed Better Auth. Usar projeto Pages, Worker Hono e bucket R2 privado dedicados ao Nidovra. Confirmar planos, cotas e localização de dados antes de operar. Registrar somente IDs, endpoints e resultados não secretos em `docs/STATUS.md`. Veja o [ADR de infraestrutura](../../adr/0001-infraestrutura-hospedada.md).
+Infraestrutura: usar projeto Neon dedicado ao Nidovra na organização `org-young-bar-07539547`, região AWS São Paulo (`aws-sa-east-1`), com PostgreSQL 18 e Managed Better Auth. Usar Pages e Worker Hono dedicados. O bucket privado fica no VPS conforme o [ADR de armazenamento de documentos](../../adr/0002-armazenamento-vps.md). Confirmar planos, cotas e localização de dados antes de operar. Registrar somente IDs, endpoints e resultados não secretos em `docs/STATUS.md`.
 
 ## 3. Identidade e ambiente familiar (FAM)
 

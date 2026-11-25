@@ -190,7 +190,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 **Interfaces:** `loadConfig()`, `createApp()`, `assertEnvironmentIsolation()`.
 
-- [ ] Step 1: conferir especificação e repositório. Verificar disponibilidade, plano e permissões de Neon PostgreSQL/Auth e Cloudflare Pages/Workers/R2. Identificar os alvos sem imprimir segredos.
+- [x] Step 1: conferir especificação e repositório. Verificar disponibilidade, plano e permissões de Neon PostgreSQL/Auth e Cloudflare Pages/Workers/R2. Registrar no STATUS os alvos e a indisponibilidade do R2 sem imprimir segredos.
 - [ ] Step 2: provisionar e validar os recursos independentes do Nidovra dentro do plano gratuito, preservando São Paulo para Neon PostgreSQL/Auth. Registrar IDs e evidências em `docs/STATUS.md`.
 - [x] Step 3: escrever testes falhos de configuração ausente, health check sem dados privados e bloqueio de alvo errado de migração; executar RED.
 - [x] Step 4: implementar scaffold Vue/Hono, TS strict, scripts e CI; testar GREEN, build e smoke local; configurar SPA fallback e ambiente isolado.

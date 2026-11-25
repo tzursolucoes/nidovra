@@ -2,6 +2,8 @@
 
 O Nidovra é um projeto de finanças familiares, extratos e aquisições. O workspace contém o bootstrap local da aplicação web e da API.
 
+O endereço de produção é [nidovra.pages.dev](https://nidovra.pages.dev). Use `main` para a continuidade do projeto.
+
 ## Executar localmente
 
 Use Node.js 24 e pnpm 11.25.0. Na raiz, execute `pnpm install --frozen-lockfile` e `pnpm dev`. O frontend responde em `http://localhost:5173` e a sonda da API em `http://127.0.0.1:3001/api/v1/health`.

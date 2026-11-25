@@ -1,5 +1,12 @@
-# Nidovra — kit de desenvolvimento v1.2
-Finanças da casa, em sintonia. PWA de finanças familiares, extratos e aquisições.
+# Nidovra v1.2
+
+O Nidovra é um projeto de finanças familiares, extratos e aquisições. O workspace contém o bootstrap local da aplicação web e da API.
+
+## Executar localmente
+
+Use Node.js 24 e pnpm 11.25.0. Na raiz, execute `pnpm install --frozen-lockfile` e `pnpm dev`. O frontend responde em `http://localhost:5173` e a sonda da API em `http://127.0.0.1:3001/api/v1/health`.
+
+Execute `pnpm test`, `pnpm typecheck` e `pnpm build` para verificar o workspace. Consulte [Operação](docs/operations.md) para configuração e isolamento.
 
 ## Começar (Windows / VS Code)
 1. Extraia o ZIP em uma pasta nova, por exemplo `D:\Projetos\Nidovra`, preservando pastas ocultas `.codex` e `.agents`.
@@ -15,4 +22,4 @@ Finanças da casa, em sintonia. PWA de finanças familiares, extratos e aquisiç
 - `.env.example`: variáveis sem segredos; `.gitignore`: proteção básica.
 
 ## Limites
-Kit de instruções pronto para iniciar programação, não aplicativo implementado. Node, pnpm, Git, Codex, acesso Neon/Cloudflare e eventualmente PostgreSQL local dependem do ambiente. Superpowers e skills de fornecedores são externas e não estão incluídas; as skills locais funcionam como procedimentos complementares. Não há credenciais, banco provisionado, deploy, fixtures bancárias reais nem testes de aplicação executados. Nome escolhido após busca preliminar pública, sem garantia de marca/domínio exclusivos; verificar INPI antes de comercializar.
+Identidade, migrações e módulos financeiros estão pendentes. O estado das verificações e dos serviços remotos está em [Estado do projeto](docs/STATUS.md). As skills locais complementam as ferramentas de desenvolvimento. Nome escolhido após busca preliminar pública, sem garantia de marca ou domínio exclusivos. Consulte o INPI antes de comercializar.

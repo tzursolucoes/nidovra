@@ -1,0 +1,6 @@
+{
+  "name": "@nidovra/db",
+  "private": true,
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit" }
+}

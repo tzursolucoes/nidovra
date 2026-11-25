@@ -5,6 +5,7 @@
 - O relato do proprietário mostrou acesso autenticado e confirmação de criação da família. A reformulação anterior havia tratado a tela de acesso. A área autenticada agora destaca a família ativa, o papel, os integrantes e as ações disponíveis, com fotografia em telas largas e coluna única em telas estreitas.
 - Uma conta sem família pode criar um espaço ou usar um código recebido. Uma família existente pode ser usada por uma só pessoa. O administrador pode gerar um código vinculado ao e-mail convidado e compartilhar manualmente. As ações secundárias ficam recolhidas. A API fornece papel e identificadores na lista de integrantes. A identificação por nome ou e-mail permanece pendente.
 - A consulta direta ao GitHub confirmou `d1cd2a8` na `main` antes do ajuste. A tela anterior falhou no teste de destaque da família ativa. No novo build, administrador, membro e conta sem família passaram em DOM simulado. Também passaram typecheck e 36 testes da suíte padrão. Três testes exigem PostgreSQL isolado e ficaram fora desta rodada. Avaliação visual pelo proprietário.
+- O GitHub confirmou o commit `4c8e73f` na `main`. O Pages publicou esse commit em `nidovra.pages.dev` como deployment `07dd3d08-389d-44ee-a2b3-577aaa4e73b6`. A página e a sonda retornaram HTTP 200, e o JavaScript, o CSS e a imagem corresponderam aos hashes do build. A sessão anônima retornou HTTP 401.
 
 ## Correções de sessão e apresentação do login
 

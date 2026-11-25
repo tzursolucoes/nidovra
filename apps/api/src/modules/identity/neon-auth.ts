@@ -5,6 +5,7 @@ const authActions = ['sign-in/email', 'sign-up/email', 'sign-out',
 type AuthAction = typeof authActions[number];
 type Fetcher = (url: URL, init: RequestInit) => Promise<Response>;
 const cookiePrefix = '__Secure-neon-auth.';
+const sessionCookie = cookiePrefix + 'session_token=';
 
 /** Usa os cookies opacos do provedor. O aplicativo consulta a sessão vigente a cada requisição privada. */
 export function createNeonAuth(baseUrl: string, origin: string, fetcher: Fetcher = fetch) {
@@ -42,15 +43,22 @@ export function createNeonAuth(baseUrl: string, origin: string, fetcher: Fetcher
     return { id: user.id, email: user.email, emailVerified: user.emailVerified === true };
   };
 
-  function reply(status: number, code?: string, upstream?: Response) {
+  function reply(status: number, code?: string, upstream?: Response, reportSession = false) {
     const responseHeaders = new Headers({ 'Cache-Control': 'no-store' });
+    let sessionEstablished = false;
     for (const cookie of upstream?.headers.getSetCookie() ?? []) {
       const [pair, ...attributes] = cookie.split(';').map((attribute) => attribute.trim());
       if (!pair?.startsWith(cookiePrefix)) continue;
       const lifetime = attributes.filter((attribute) => /^(Expires|Max-Age)=/i.test(attribute));
       responseHeaders.append('Set-Cookie', [pair, 'Path=/', 'Secure', 'HttpOnly', 'SameSite=Lax', ...lifetime].join('; '));
+      if (pair.startsWith(sessionCookie) && pair.length > sessionCookie.length &&
+        !lifetime.some((attribute) => /^Max-Age=0$/i.test(attribute))) {
+        sessionEstablished = true;
+      }
     }
-    return Response.json(code ? { error: { code } } : { ok: true }, { status, headers: responseHeaders });
+    const payload = code ? { error: { code } }
+      : reportSession ? { ok: true, sessionEstablished } : { ok: true };
+    return Response.json(payload, { status, headers: responseHeaders });
   }
 
   async function proxy(request: Request, action: AuthAction) {
@@ -70,7 +78,7 @@ export function createNeonAuth(baseUrl: string, origin: string, fetcher: Fetcher
       const upstream = await fetcher(url, {
         method: 'POST', headers: requestHeaders, redirect: 'manual', body: JSON.stringify(data),
       });
-      if (upstream.ok) return reply(200, undefined, upstream);
+      if (upstream.ok) return reply(200, undefined, upstream, action === 'email-otp/verify-email');
       if (action === 'send-verification-email' && [400, 404, 422].includes(upstream.status)) {
         return reply(200);
       }

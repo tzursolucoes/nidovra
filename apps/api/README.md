@@ -12,7 +12,7 @@ O módulo expõe a aplicação HTTP Hono. A entrada local `src/server.ts` atende
 
 As rotas usam o prefixo `/api/v1`. Mutações exigem `Origin` presente em `ALLOWED_ORIGINS`. CORS permite credenciais somente nas origens explícitas. As respostas privadas incluem `Cache-Control: no-store`.
 
-O Worker integra Neon Managed Better Auth em `POST /auth/sign-in/email`, `POST /auth/sign-up/email`, `POST /auth/email-otp/verify-email`, `POST /auth/send-verification-email` e `POST /auth/sign-out`. A resposta de autenticação é `{"ok":true}` ou erro controlado. O Pages faz o proxy na mesma origem. O Worker encaminha somente campos permitidos e mantém o cookie do provedor restrito a HTTPS e inacessível a JavaScript. A resolução de sessão consulta o Neon a cada requisição privada e exige e-mail confirmado para acesso aos dados.
+O Worker integra Neon Managed Better Auth em `POST /auth/sign-in/email`, `POST /auth/sign-up/email`, `POST /auth/email-otp/verify-email`, `POST /auth/send-verification-email` e `POST /auth/sign-out`. A resposta de autenticação é `{"ok":true}` ou erro controlado. A confirmação do código também informa `sessionEstablished` quando recebe do provedor um cookie de sessão. O contexto em `GET /session/context` confirma a validade efetiva da sessão. O Pages faz o proxy na mesma origem. O Worker mantém o cookie restrito a HTTPS e inacessível a JavaScript. A resolução de sessão consulta o Neon a cada requisição privada, com `cache: 'no-store'` habilitado explicitamente em `wrangler.jsonc`, e exige e-mail confirmado para acesso aos dados.
 
 | Operação | Entrada | Resposta |
 |---|---|---|

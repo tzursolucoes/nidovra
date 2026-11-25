@@ -46,9 +46,26 @@ describe('integração de sessão Neon', () => {
       headers: { Origin: origin, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'teste@example.test', otp: '012345', callbackURL: 'https://external.test' }),
     });
-    expect((await auth.proxy(request, 'email-otp/verify-email')).status).toBe(200);
+    const response = await auth.proxy(request, 'email-otp/verify-email');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, sessionEstablished: false });
     const [url, init] = upstream.mock.calls[0]!;
     expect(url.pathname.endsWith('/email-otp/verify-email')).toBe(true);
     expect(JSON.parse(String(init.body))).toEqual({ email: 'teste@example.test', otp: '012345' });
+  });
+
+  it('sinaliza a sessão criada na confirmação sem devolver seu token', async () => {
+    const upstream = vi.fn(async () => Response.json({ token: 'private' }, {
+      headers: { 'Set-Cookie': `${sessionCookie}; Path=/; HttpOnly; Secure` },
+    }));
+    const auth = createNeonAuth(base, origin, upstream);
+    const request = new Request(origin + '/api/v1/auth/email-otp/verify-email', {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'teste@example.test', otp: '012345' }),
+    });
+    const response = await auth.proxy(request, 'email-otp/verify-email');
+    expect(await response.json()).toEqual({ ok: true, sessionEstablished: true });
+    expect(response.headers.getSetCookie()[0]).toContain(sessionCookie);
   });
 });

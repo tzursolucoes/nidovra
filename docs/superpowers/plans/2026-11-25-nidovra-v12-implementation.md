@@ -193,9 +193,9 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 - [ ] Step 1: conferir especificação, inspecionar repositório/alvo, verificar documentação e disponibilidade real de Neon Functions, Better Auth, Storage, Pages, quotas e limites; identificar Pages/branch/URLs sem imprimir segredos.
 - [ ] Step 2: verificar região São Paulo, quota e isolamento com novo projeto Neon, role/database/auth/storage próprios e novo projeto Pages; após autorização de implementação, provisionar e registrar IDs reais. Bloquear se não suportado. Nunca criar no projeto MotoHub.
-- [ ] Step 3: escrever testes falhos de configuração ausente, health check sem dados privados e bloqueio de alvo errado de migração; executar RED.
-- [ ] Step 4: implementar scaffold Vue/Hono, TS strict, scripts e CI; testar GREEN, build e smoke local; configurar SPA fallback e ambiente isolado.
-- [ ] Step 5: revisar e commit `chore: bootstrap isolated household finance workspace`.
+- [x] Step 3: escrever testes falhos de configuração ausente, health check sem dados privados e bloqueio de alvo errado de migração; executar RED.
+- [x] Step 4: implementar scaffold Vue/Hono, TS strict, scripts e CI; testar GREEN, build e smoke local; configurar SPA fallback e ambiente isolado.
+- [x] Step 5: revisar e registrar o bootstrap local no commit `7539a88`.
 
 ### Task 1 — Identidade e família (AC-01/02)
 
@@ -203,7 +203,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 **Interfaces:** `requireSession`, `requireMembership`, `requireAdmin`, `acceptInvitation`.
 
-- [ ] Step 1: RED para sessão ausente, terceiro com ID forjado, convite expirado/reutilizado, e-mail incorreto, revogação e administrador removendo a si sem sucessão.
+- [x] Step 1: RED para sessão ausente, terceiro com ID forjado, convite expirado/reutilizado, e-mail incorreto, revogação e administrador removendo a si sem sucessão.
 - [ ] Step 2: implementar integração Managed Better Auth, verificação de e-mail, recuperação, revogação, convites transacionais e controle de acesso servidor em todos os caminhos.
 - [ ] Step 3: implementar telas login, convite, criação de família e gestão de integrantes; testar GREEN e E2E dois usuários.
 - [ ] Step 4: revisão de cookies, CSRF, CORS, rate limit, enumeração de usuários e logs; commit `feat(auth): shared household and scoped access`.

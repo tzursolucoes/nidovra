@@ -1,0 +1,193 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import {
+  createIdentityClient, IdentityError, type HouseholdMember, type SessionContext,
+} from './identity-client';
+
+let client: ReturnType<typeof createIdentityClient> | undefined;
+let keysActor: string | undefined;
+const session = ref<SessionContext>();
+const members = ref<HouseholdMember[]>([]);
+const householdId = ref('');
+const name = ref('');
+const email = ref('');
+const invitation = ref('');
+const inviteToken = ref('');
+const error = ref('');
+const notice = ref('');
+const pending = ref(false);
+const keys = new Map<string, string>();
+const selected = computed(() => session.value?.memberships.find((item) => item.householdId === householdId.value));
+const errors: Record<number, string> = {
+  401: 'Entre na sua conta para acessar sua família.',
+  403: 'Sua conta não pode realizar esta operação.',
+  404: 'O registro não está disponível para sua conta.',
+  409: 'A operação não está mais disponível. Atualize a página e tente novamente.',
+  422: 'Confira os dados informados e tente novamente.',
+  503: 'O serviço de identidade está indisponível neste ambiente.',
+};
+
+function idempotencyKey(operation: string) {
+  const previous = keys.get(operation);
+  if (previous) return previous;
+  const key = crypto.randomUUID();
+  keys.set(operation, key);
+  return key;
+}
+
+function api() {
+  return client ??= createIdentityClient(fetch, import.meta.env.VITE_API_BASE_URL);
+}
+
+async function run(operation: () => Promise<void>) {
+  if (pending.value) return;
+  pending.value = true;
+  error.value = '';
+  notice.value = '';
+  try {
+    await operation();
+  } catch (failure) {
+    const status = failure instanceof IdentityError ? failure.status : undefined;
+    if (status === 401 || status === 503) {
+      session.value = undefined;
+      members.value = [];
+      inviteToken.value = '';
+    }
+    error.value = errors[status ?? 0] ?? 'Não foi possível concluir a operação. Tente novamente.';
+  } finally {
+    pending.value = false;
+  }
+}
+
+async function loadMembers() {
+  members.value = [];
+  inviteToken.value = '';
+  if (householdId.value) members.value = (await api().members(householdId.value)).members;
+}
+
+async function loadSession(preferredId = householdId.value) {
+  const context = await api().session();
+  // Uma falha temporária preserva as chaves e a troca confirmada de ator as descarta.
+  if (keysActor !== context.user.id) {
+    keys.clear();
+    name.value = '';
+    email.value = '';
+    invitation.value = '';
+    keysActor = context.user.id;
+  }
+  session.value = context;
+  householdId.value = context.memberships.find((item) => item.householdId === preferredId)?.householdId
+    ?? context.memberships[0]?.householdId ?? '';
+  await loadMembers();
+}
+
+function createHousehold() {
+  return run(async () => {
+    const operation = `criar:${name.value.trim()}`;
+    const result = await api().createHousehold(name.value.trim(), idempotencyKey(operation));
+    keys.delete(operation);
+    name.value = '';
+    notice.value = 'Família criada.';
+    await loadSession(result.id);
+  });
+}
+
+function createInvitation() {
+  return run(async () => {
+    inviteToken.value = '';
+    const address = email.value.trim();
+    const operation = `convidar:${householdId.value}:${address}`;
+    const result = await api().invite(householdId.value, address, idempotencyKey(operation));
+    keys.delete(operation);
+    email.value = '';
+    inviteToken.value = result.token;
+  });
+}
+
+function acceptInvitation() {
+  return run(async () => {
+    const result = await api().accept(invitation.value.trim());
+    invitation.value = '';
+    notice.value = 'Convite aceito.';
+    await loadSession(result.householdId);
+  });
+}
+
+function revokeMembership(member: HouseholdMember) {
+  if (!window.confirm(`Remover o acesso da conta ${member.authUserId} a esta família?`)) return;
+  void run(async () => {
+    await api().revoke(householdId.value, member.id);
+    notice.value = 'Acesso removido.';
+    await loadMembers();
+  });
+}
+
+onMounted(() => run(() => loadSession()));
+</script>
+
+<template>
+  <main>
+    <h1>Nidovra</h1>
+    <p v-if="pending" role="status">Aguarde…</p>
+    <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="notice" role="status">{{ notice }}</p>
+    <button v-if="!session && !pending" type="button" @click="run(() => loadSession())">Atualizar sessão</button>
+
+    <template v-if="session">
+      <p>{{ session.user.email }}</p>
+      <section v-if="session.memberships.length" aria-labelledby="household-heading">
+        <h2 id="household-heading">Minha família</h2>
+        <label for="household">Família</label>
+        <select id="household" v-model="householdId" :disabled="pending" @change="run(loadMembers)">
+          <option v-for="item in session.memberships" :key="item.householdId" :value="item.householdId">
+            {{ item.householdName }}
+          </option>
+        </select>
+        <ul v-if="members.length">
+          <li v-for="(member, index) in members" :key="member.id">
+            {{ member.authUserId === session.user.id ? 'Você' : `Integrante ${index + 1}` }}
+            · {{ member.role === 'admin' ? 'Administrador' : 'Membro' }}
+            <div v-if="selected?.role === 'admin' && member.authUserId !== session.user.id">
+              Conta <code>{{ member.authUserId }}</code>
+              <button type="button" :disabled="pending" @click="revokeMembership(member)">Remover acesso</button>
+            </div>
+          </li>
+        </ul>
+        <form v-if="selected?.role === 'admin'" @submit.prevent="createInvitation">
+          <label for="invite-email">E-mail do integrante</label>
+          <input id="invite-email" v-model="email" type="email" maxlength="254" required :disabled="pending">
+          <button type="submit" :disabled="pending">Criar convite</button>
+        </form>
+        <label v-if="inviteToken" for="invite-token">
+          Código de uso único. Compartilhe somente com a pessoa convidada.
+          <input id="invite-token" :value="inviteToken" readonly autocomplete="off">
+        </label>
+      </section>
+
+      <form @submit.prevent="createHousehold">
+        <h2>Criar família</h2>
+        <label for="household-name">Nome da família</label>
+        <input id="household-name" v-model="name" maxlength="120" required :disabled="pending">
+        <button type="submit" :disabled="pending">Criar família</button>
+      </form>
+
+      <form @submit.prevent="acceptInvitation">
+        <h2>Aceitar convite</h2>
+        <label for="accept-token">Código do convite</label>
+        <input id="accept-token" v-model="invitation" autocomplete="off" spellcheck="false" required :disabled="pending">
+        <button type="submit" :disabled="pending">Aceitar convite</button>
+      </form>
+    </template>
+  </main>
+</template>
+
+<style scoped>
+main { max-width: 42rem; margin: auto; padding: 1.5rem; color: #172b26; font-family: system-ui, sans-serif; }
+section, form { display: grid; gap: .75rem; margin-block: 1rem; }
+input, select, button { min-height: 44px; padding: .5rem .75rem; font: inherit; }
+input, select { box-sizing: border-box; width: 100%; border: 1px solid #52665c; border-radius: .75rem; }
+button { width: fit-content; border: 1px solid #183e35; border-radius: .75rem; color: white; background: #183e35; }
+button:disabled { opacity: .55; }
+li + li { margin-top: .5rem; }
+[role="alert"] { color: #8a3929; }
+</style>

@@ -8,6 +8,8 @@
 | Vitest | 5.1.2 | MIT | API e banco | Testes automatizados dos contratos do bootstrap |
 | Hono | 4.13.22 | MIT | API | Roteamento HTTP e CORS |
 | `@hono/node-server` | 2.1.11 | MIT | API | Servidor Hono sobre Node.js no fluxo local |
+| `pg` | 8.23.1 | MIT | Identidade e família | Conexões e transações PostgreSQL |
+| `@types/pg` | 8.23.1 | MIT | Identidade e família | Tipagem do cliente PostgreSQL |
 | Vue | 3.5.46 | MIT | Web | Renderização de componentes |
 | Vite | 8.3.8 | MIT | Web | Servidor de desenvolvimento e compilação da SPA |
 | `@vitejs/plugin-vue` | 6.0.11 | MIT | Web | Compilação de componentes `.vue` |

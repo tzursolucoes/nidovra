@@ -9,6 +9,10 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.11",
-    "hono": "4.13.22"
+    "hono": "4.13.22",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
   }
 }

@@ -47,6 +47,10 @@ Papéis não implicam agentes já instalados. Inspecionar suporte e configuraç�
 5. Executar testes relevantes e checagens de qualidade; revisão independente em segurança, dados e financeiro.
 6. Registrar evidência real, diff e pendências; commit pequeno quando autorizado. Não declarar concluído sem verificação.
 
+## Validação e histórico
+- Valide por testes unitários, integração, contratos HTTP, componentes em ambiente simulado, análise estática, typecheck e build. É proibido abrir navegador de teste, instalar ou executar Playwright, Puppeteer, Selenium, Cypress ou equivalentes, rodar E2E dependente de navegador, capturar telas ou vídeos e fazer inspeção visual automatizada ou analisar imagens da interface durante o desenvolvimento. A avaliação visual é exclusiva do proprietário.
+- Escreva título e corpo dos commits em PT-BR. Organize o corpo em tópicos sobre contexto, mudanças e arquivos, justificativas, testes executados e resultados, e limites, pendências ou efeitos externos quando aplicáveis.
+
 Nunca duplicar fatos financeiros. Isolar famílias em todas as rotas e arquivos; dinheiro em centavos exatos, estados verificáveis, transações atômicas e importações idempotentes. Sem gravações offline na v1. Sem código de produção ou migração contra MotoHub. Validar região e serviços reais antes do deploy; não mudar região silenciosamente.
 
 ## Entrada operacional

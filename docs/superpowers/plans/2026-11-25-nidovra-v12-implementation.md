@@ -27,7 +27,7 @@ O `AGENTS.md` já está na raiz deste pacote. O coordenador deve confirmar leitu
 
 ## 1. Estratégia e organização
 
-Entregar fatias verticais UI + API + banco + testes. Primeiro identidade e núcleo financeiro; depois cartão, importação bancária e fiscal, aquisições e planejamento; finalizar UX, segurança e implantação. Evitar abstração genérica excessiva. Usar workspace pnpm (proposta), TypeScript strict, lockfile versionado, migrações SQL versionadas e validação de contratos com Zod. Vitest para unidade/integração e Playwright para E2E. Verificar compatibilidade e licenças antes de fixar versões; sem instalar pacotes apenas por conveniência. Dependências devem ter versões fixadas via lockfile. Não escolher versões inexistentes.
+Entregar fatias verticais UI + API + banco + testes. Primeiro identidade e núcleo financeiro; depois cartão, importação bancária e fiscal, aquisições e planejamento; finalizar UX, segurança e implantação. Evitar abstração genérica excessiva. Usar workspace pnpm (proposta), TypeScript strict, lockfile versionado, migrações SQL versionadas e validação de contratos com Zod. Vitest para unidade, integração, contratos HTTP e componentes simulados. A avaliação visual é exclusiva do proprietário. Testes em navegador, capturas e inspeção visual automatizada são proibidos conforme AGENTS.md. Verificar compatibilidade e licenças antes de fixar versões; sem instalar pacotes apenas por conveniência. Dependências devem ter versões fixadas via lockfile. Não escolher versões inexistentes.
 
 ```text
 apps/
@@ -36,7 +36,7 @@ apps/
     src/components/                 # UI reutilizável e acessível
     src/features/{auth,dashboard,transactions,cards,acquisitions,planning,imports,settings}/
     src/workers/                    # leitura local de documentos
-    e2e/
+    test/
   api/
     src/app.ts
     src/middleware/{auth,household,validation,errors}.ts
@@ -204,7 +204,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 
 - [x] Step 1: RED para sessão ausente, terceiro com ID forjado, convite expirado/reutilizado, e-mail incorreto, revogação e administrador removendo a si sem sucessão.
 - [ ] Step 2: implementar integração Managed Better Auth, verificação de e-mail, recuperação, revogação, convites transacionais e controle de acesso servidor em todos os caminhos.
-- [ ] Step 3: implementar telas login, convite, criação de família e gestão de integrantes; testar GREEN e E2E dois usuários.
+- [ ] Step 3: implementar telas login, convite, criação de família e gestão de integrantes; testar GREEN e integração HTTP com dois usuários.
 - [ ] Step 4: revisão de cookies, CSRF, CORS, rate limit, enumeração de usuários e logs; commit `feat(auth): shared household and scoped access`.
 
 ### Task 2 — Núcleo financeiro, contas e categorias (AC-03/14)
@@ -216,7 +216,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 1: RED para transferência atômica, tarifa separada, saldo inicial não receita, retroativo, âncora divergente, moeda inválida, concorrência e versão desatualizada.
 - [ ] Step 2: implementar schema, constraints, valores em centavos, FK por família, transações e projeções. Verificar rollback após falha entre pernas.
 - [ ] Step 3: UI de contas, extrato, filtros, categorias e formulários rápidos; estados de cobertura parcial.
-- [ ] Step 4: GREEN unidade, PostgreSQL real isolado e E2E; commit `feat(finance): canonical cash movements and balances`.
+- [ ] Step 4: GREEN unidade, PostgreSQL real isolado e integração HTTP; commit `feat(finance): canonical cash movements and balances`.
 
 ### Task 3 — Compras, parcelas, faturas e liquidação (AC-08/10/11)
 
@@ -238,7 +238,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 1: RED para hash repetido, confirmação concorrente, preview obsoleto, MIME falso, arquivo grande, download cruzado, falha storage/DB e reversão com dependência manual.
 - [ ] Step 2: implementar estado `uploaded/preview/review/confirmed/reversed/failed`, SHA-256, upload privado, staging e limpeza de órfãos; transação de confirmação, idempotência e proveniência. Limite 20 MiB e limites adicionais por parser.
 - [ ] Step 3: montar prévia de lotes com classificação de novos/vinculados/duplicados/pendentes/rejeitados, correções e histórico; sem execução de conteúdo de arquivo.
-- [ ] Step 4: GREEN integração e E2E; testar falha intermediária; commit `feat(imports): private document pipeline and atomic batches`.
+- [ ] Step 4: GREEN integração e contratos HTTP; testar falha intermediária; commit `feat(imports): private document pipeline and atomic batches`.
 
 ### Task 5 — Extratos Inter/Nubank e faturas (AC-04/05/06/14)
 
@@ -250,7 +250,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 2: RED para BOM, decimal brasileiro, OFX SGML/XML, FITID por conta, arquivos sobrepostos, duas transações legítimas iguais, transferência bilateral, saldo divergente, PDF com linhas quebradas, fatura com parcelas, fechamento e estorno.
 - [ ] Step 3: implementar adaptadores OFX (parser escolhido após avaliar fixtures), Papa Parse para CSV, PDF.js, Tesseract.js apenas para documento sem texto e com consentimento de processamento local. Normalizar moeda, data e direção. Fallback OFX/CSV com mapeamento revisável.
 - [ ] Step 4: deduplicar identificadores fortes; fingerprint apenas sugere; reconciliar fatura/extrato sem nova despesa; aplicar regras de categoria por família e oferecer revisão de exceções.
-- [ ] Step 5: GREEN comparar soma de linhas e saldo com arquivo de referência para cada layout; E2E importação repetida e transferências. Documentar layouts suportados e os não testados.
+- [ ] Step 5: GREEN comparar soma de linhas e saldo com arquivo de referência para cada layout; integração de importação repetida e transferências. Documentar layouts suportados e os não testados.
 - [ ] Step 6: commit `feat(importers): validated Inter and Nubank statements and invoices` somente após testes dos formatos prometidos.
 
 ### Task 6 — NF-e/NFC-e e vínculo de compras (AC-07/08/15)
@@ -263,7 +263,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 2: validar tamanho/estrutura antes de parse; rejeitar DTD/entidades externas; extrair chave, emitente, data, itens, totais e pagamento informado com fast-xml-parser configurado defensivamente. Não usar rede nem validar autenticidade fiscal por mera extração.
 - [ ] Step 3: PDF.js para DANFE textual, OCR local para scan, confiança por campo e revisão humana; ausência de parcelas/pagamento vira pendência.
 - [ ] Step 4: vincular XML/PDF à mesma compra por chave e evidência; manter original privado; criar compromisso quando não há pagamento, ou enriquecer lançamento conciliado.
-- [ ] Step 5: GREEN e E2E XML → fatura → extrato, e ordem inversa, garantindo fato único; commit `feat(fiscal): fiscal documents linked to canonical purchases`.
+- [ ] Step 5: GREEN e integração XML → fatura → extrato, e ordem inversa, garantindo fato único; commit `feat(fiscal): fiscal documents linked to canonical purchases`.
 
 ### Task 7 — Aquisições e infográficos (AC-09/11)
 
@@ -274,7 +274,7 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 1: RED para fogão 6x400 (1 paga = 16,67%, saldo 2.000), pagamento desigual, parcial, estorno, cancelamento, valor desconhecido e compra à vista.
 - [ ] Step 2: implementar associação 1:1 aquisição/compra, progresso derivado, garantia opcional, histórico e filtros; nenhuma nova despesa criada pelo módulo.
 - [ ] Step 3: implementar galeria com cards, barra segmentada, valor pago/restante, próxima parcela, documentos e timeline; gráfico ECharts de parcelas futuras e totais por categoria. Supermercado não entra automaticamente em Aquisições.
-- [ ] Step 4: GREEN, teste de acessibilidade dos gráficos com alternativa textual, E2E conciliação altera progresso; commit `feat(acquisitions): visual payment progress and purchase history`.
+- [ ] Step 4: GREEN, teste de acessibilidade dos gráficos com alternativa textual, integração de conciliação e recálculo do progresso; commit `feat(acquisitions): visual payment progress and purchase history`.
 
 ### Task 8 — Planejamento, orçamento e alertas (AC-12/13)
 
@@ -285,27 +285,27 @@ Rotas de login e recuperação seguem SDK Better Auth, não duplicar protocolos 
 - [ ] Step 1: RED para recorrência repetida, fim de mês, pausa, receita prevista fora de saldo, projeção com fatura+parcelas e alertas duplicados.
 - [ ] Step 2: implementar ocorrências com chave regra/data; projeção de compromissos não liquidados; orçamento mensal e alertas internos deduplicados. Não depender de scheduler indisponível; materializar horizonte sob demanda. Push opcional só se viável, sem prometer entrega.
 - [ ] Step 3: UI de orçamento, calendário, projeção e avisos; indicar hipóteses, atrasos e dados insuficientes.
-- [ ] Step 4: GREEN e E2E, commit `feat(planning): household budget and commitments`.
+- [ ] Step 4: GREEN e integração, commit `feat(planning): household budget and commitments`.
 
 ### Task 9 — Dashboard, relatórios e experiência visual (AC-16)
 
-**Files:** `modules/dashboard/*`, `features/dashboard/*`, `app/theme.ts`, componentes e rotas, `e2e/theme.spec.ts`.
+**Files:** `modules/dashboard/*`, `features/dashboard/*`, `app/theme.ts`, componentes e rotas, `test/theme.spec.ts`.
 
 **Interfaces:** `getDashboardSnapshot`, `exportMovementsCsv`, `setTheme`.
 
 - [ ] Step 1: RED para filtro de mês, dados ausentes, saldo desatualizado, totais por categoria, CSV com fórmulas injetáveis, tema e navegação por teclado.
 - [ ] Step 2: implementar consultas consistentes por snapshot, cobertura de extrato e status; CSV com escaping e mitigação de formula injection. Gráficos ECharts lazy, Phosphor Regular/Fill, tokens conforme spec.
 - [ ] Step 3: construir dashboard Modern Financial Editorial, barra inferior mobile, bottom sheet +, sidebar desktop, formulários dedicados; apresentar protótipo nos dois temas para validação visual antes da publicação.
-- [ ] Step 4: testar responsividade 360/390/768/1280px, Android Chrome, desktop Chrome/Firefox, teclado, contraste, estados de loading/erro e desempenho; GREEN. Commit `feat(ui): financial editorial dashboard and reports`.
+- [ ] Step 4: validar teclado, contraste e estados de loading/erro por análise estática e componentes simulados. O proprietário avalia visualmente a responsividade em 360/390/768/1280px, mobile e desktop. Commit `feat(ui): financial editorial dashboard and reports`.
 
 ### Task 10 — Hardening, PWA e release (AC-01–18)
 
-**Files:** service worker, headers Pages, CI, `docs/operations.md`, `docs/security.md`, `e2e/critical-flows.spec.ts`.
+**Files:** service worker, headers Pages, CI, `docs/operations.md`, `docs/security.md`, `test/critical-flows.spec.ts`.
 
 - [ ] Step 1: RED para cache de dados privados, sessão expirada, IDOR, CSRF, origem indevida, XML malicioso, XSS em documentos/descritivos, duplo clique, reimportação concorrente, rollback e isolamento do MotoHub.
 - [ ] Step 2: implementar headers, CSP compatível com auth/worker, rate limit, cache apenas assets públicos, limpeza de sessão e observabilidade redigida; sem armazenamento de dados financeiros offline. Revisar permissões mínimas do banco e storage.
 - [ ] Step 3: preparar migrações forward-only e estratégia de rollback da aplicação compatível com schema; testar restauração em ambiente isolado, backup e retenção de documentos; documentar limites de custo e alertas de cota.
-- [ ] Step 4: executar CI completo, revisão técnica independente, testes E2E com dois integrantes, importações reais anonimizadas e todos AC. Registrar evidências. Não inventar resultado de teste.
+- [ ] Step 4: executar CI completo, revisão técnica independente, integração HTTP com dois integrantes, importações reais anonimizadas e todos AC. Registrar evidências. Não inventar resultado de teste.
 - [ ] Step 5: conferir alvo e autorização antes de criar recursos/deploy. Configurar Pages build (`pnpm --filter web build`, ajustar nome real do pacote; saída `dist`), fallback SPA, API e auth com origem correta. Executar smoke homologação e validar quotas antes de produção.
 - [ ] Step 6: commit `chore(release): secure deployment and operational runbook` após gates. Publicar somente quando autorizado.
 
@@ -319,7 +319,6 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:integration
-pnpm test:e2e
 pnpm build
 ```
 
@@ -327,12 +326,12 @@ Migrações somente com URL de banco validada e role apropriada; scripts devem r
 
 | Aceite | Task | Evidência exigida |
 |---|---|---|
-| AC-01/02 | 1,10 | E2E dois integrantes e revogação |
+| AC-01/02 | 1,10 | integração HTTP com dois integrantes e revogação |
 | AC-03 | 2 | integração saldo e transferência |
 | AC-04 | 5 | fixtures reais anonimizados dos bancos |
 | AC-05/06 | 4,5 | concorrência, reimportação e falso positivo |
 | AC-07/08 | 3,6 | XML/PDF e parcelamento ausente |
-| AC-09 | 7 | unidade e E2E progresso 6x400 |
+| AC-09 | 7 | unidade e integração do progresso 6x400 |
 | AC-10/11 | 3,7 | liquidação integral/parcial/estorno |
 | AC-12/13 | 8 | recorrência e projeção sem duplicidade |
 | AC-14 | 2,5 | divergências e âncora |

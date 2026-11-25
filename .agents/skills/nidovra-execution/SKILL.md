@@ -7,3 +7,5 @@ description: "Executar ou retomar tarefas do plano com TDD e orçamento de conte
 Leia STATUS, task e regras afetadas. Escolha menor fatia. Use Superpowers se disponível; caso contrário execute RED, GREEN, refatoração, revisão e evidência. Delegue apenas trabalho independente; no máximo dois agentes simultâneos. Atualize STATUS e docs no mesmo diff.
 
 Respeite AGENTS.md. Retorne evidência, riscos e bloqueios.
+
+Execute testes de unidade, integração e contratos pelo terminal. A regra de AGENTS.md proíbe testes em navegador, capturas e inspeção visual automatizada.
